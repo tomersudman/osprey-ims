@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermes IMS</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#30363d;
+  --bd:#30363d;--bd2:#444c56;
+  --tx:#e6edf3;--tx2:#8b949e;--tx3:#6e7681;
+  --blue:#1f6feb;--blue2:#388bfd;
+  --green:#3fb950;--gbg:#0d2b1a;--gbd:#236b30;
+  --red:#f85149;--rbg:#2d1214;--rbd:#5a2020;
+  --amber:#e3b341;--abg:#271d05;
+  --purple:#bc8cff;--pbg:#1e1233;--pbd:#6b3fcc;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:var(--bg2);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px}
+.brand{font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px}
+.badge{background:var(--blue);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:1px}
+.ntabs{display:flex;gap:2px}
+.nb{background:none;border:none;color:var(--tx2);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit;transition:all .15s}
+.nb:hover,.nb.on{background:var(--bg3);color:var(--tx)}
+.nb.on{font-weight:500}
+.main{padding:24px;max-width:1600px;margin:0 auto}
+/* ── STAT STRIP (magazine / UAS Manager style) ── */
+.stat-strip{
+  display:flex;align-items:stretch;
+  border-bottom:1px solid var(--bd);
+  margin-bottom:24px;
+  background:transparent;
+}
+.stat-item{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:20px 8px;text-align:center;
+  cursor:default;transition:background .12s;
+}
+.stat-item.clickable{cursor:pointer}
+.stat-item.clickable:hover{background:rgba(56,139,253,.06)}
+.stat-divider{width:1px;background:var(--bd);flex-shrink:0;margin:12px 0}
+.stat-label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;white-space:nowrap}
+.stat-val{font-size:32px;font-weight:700;line-height:1}
+.stat-sub{font-size:11px;color:var(--tx3);margin-top:4px}
+.card{background:var(--bg2);border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.ch{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--bd);flex-wrap:wrap;gap:10px}
+.ctitle{font-size:13px;font-weight:500}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input,select,textarea{background:var(--bg3);border:1px solid var(--bd);color:var(--tx);border-radius:7px;padding:0 10px;height:34px;font-size:13px;font-family:inherit;outline:none;transition:border .15s}
+textarea{height:auto;padding:8px 10px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--blue)}
+input::placeholder,textarea::placeholder{color:var(--tx3)}
+select option{background:var(--bg3)}
+.btn{height:34px;padding:0 14px;border-radius:7px;border:1px solid var(--bd2);background:var(--bg3);color:var(--tx);cursor:pointer;font-size:13px;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:all .15s}
+.btn:hover{background:var(--bg4)}
+.btn.bp{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.bp:hover{background:#1a5fcc}
+.btn.bg{background:var(--gbg);border-color:var(--gbd);color:var(--green)}
+.btn.bg:hover{background:#1a3d23}
+.btn.br{background:var(--rbg);border-color:var(--rbd);color:var(--red)}
+.btn.br:hover{background:#3d1619}
+.btn.bpu{background:var(--pbg);border-color:var(--pbd);color:var(--purple)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:var(--bg3)}
+th{padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;border-bottom:1px solid var(--bd);cursor:pointer;user-select:none}
+th:hover{color:var(--tx)}
+th.asc::after{content:" ^"}th.desc::after{content:" v"}
+td{padding:9px 12px;border-bottom:1px solid var(--bd);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr.rclick{cursor:pointer}
+tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
+.pn{font-size:13px;color:var(--tx)}
+.apn{font-size:11px;color:var(--tx3)}
+.sn{font-size:14px;font-weight:700;padding:2px 10px;border-radius:6px;display:inline-block;min-width:36px;text-align:center}
+.sok{color:var(--green);background:var(--gbg)}
+.slow{color:var(--amber);background:var(--abg)}
+.scrit{color:var(--red);background:var(--rbg)}
+.szero{color:var(--tx3);background:var(--bg3)}
+.loctag{background:var(--bg3);border:1px solid var(--bd);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--tx2);white-space:nowrap}
+.tt{padding:2px 8px;border-radius:5px;font-size:11px;font-weight:500}
+.ttLRU{background:#0d2a4a;color:#388bfd;border:1px solid #1f6feb}
+.ttLRM{background:#271d05;color:#e3b341;border:1px solid #8a6a00}
+.ttCons{background:#0d2b1a;color:#3fb950;border:1px solid #236b30}
+.smrc{font-family:monospace;font-size:12px;color:var(--tx2)}
+.txd{padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;text-transform:uppercase}
+.txdd{background:var(--rbg);color:var(--red);border:1px solid var(--rbd)}
+.txdr{background:var(--gbg);color:var(--green);border:1px solid var(--gbd)}
+.eok{color:var(--green);font-size:12px}
+.esoon{color:var(--amber);font-size:12px;font-weight:500}
+.egone{color:var(--red);font-size:12px;font-weight:500}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;z-index:200;padding:20px;overflow-y:auto}
+.modal{background:var(--bg2);border:1px solid var(--bd2);border-radius:12px;width:720px;max-width:100%;margin:auto}
+.mh{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--bd);gap:12px}
+.mt{font-size:15px;font-weight:600}
+.mc{background:none;border:none;color:var(--tx2);font-size:22px;cursor:pointer;line-height:1;flex-shrink:0;padding:0}
+.mc:hover{color:var(--tx)}
+.mb{padding:20px 24px;max-height:75vh;overflow-y:auto}
+.mf{display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--bd)}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ff{grid-column:1/-1}
+.fl{font-size:12px;color:var(--tx2);margin-bottom:4px;display:block;font-weight:500}
+.ibox{background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:16px}
+.ds{margin-bottom:20px}
+.dst{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--bd)}
+.dg4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.dg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.df{background:var(--bg3);border-radius:8px;padding:10px 12px}
+.dfl{font-size:11px;color:var(--tx3);margin-bottom:3px}
+.dfv{font-size:13px;font-weight:500}
+.sb{margin:12px 0}
+.sbl{display:flex;justify-content:space-between;font-size:11px;color:var(--tx3);margin-bottom:4px}
+.sbb{height:8px;background:var(--bg3);border-radius:4px;overflow:hidden}
+.sbf{height:100%;border-radius:4px}
+.tlh{display:grid;grid-template-columns:95px 55px 1fr 60px 70px 1fr;gap:8px;padding:6px 12px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;background:var(--bg3);border-bottom:1px solid var(--bd)}
+.tlr{display:grid;grid-template-columns:95px 55px 1fr 60px 70px 1fr;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd);font-size:12px;align-items:center}
+.tlr:last-child{border-bottom:none}
+.tlr:hover{background:rgba(255,255,255,.03)}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.rb{background:var(--bg3);border:1px solid var(--bd);border-radius:10px;padding:16px}
+.rh{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--tx2);font-weight:600;margin-bottom:12px}
+.ms2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.ms{background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:10px;text-align:center}
+.msl{font-size:10px;color:var(--tx3);text-transform:uppercase;margin-bottom:3px}
+.msv{font-size:18px;font-weight:600}
+.rli{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px}
+.rli:last-child{border-bottom:none}
+.rlin{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ah{display:grid;grid-template-columns:105px 58px 1fr 78px 110px 1fr;gap:8px;padding:7px 14px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;background:var(--bg3);border-bottom:1px solid var(--bd)}
+.ar{display:grid;grid-template-columns:105px 58px 1fr 78px 110px 1fr;gap:8px;padding:8px 14px;border-bottom:1px solid var(--bd);font-size:12px;align-items:center}
+.ar:last-child{border-bottom:none}
+.ar:hover{background:rgba(255,255,255,.03)}
+/* location map */
+.map-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:18px}
+.map-cab{background:var(--bg3);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.map-cab-title{padding:10px 14px;font-size:12px;font-weight:600;background:var(--bg4);border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
+.map-floor{padding:6px 14px;border-bottom:1px solid var(--bd);font-size:11px}
+.map-floor:last-child{border-bottom:none}
+.map-floor-lbl{color:var(--tx3);font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.map-item{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;cursor:pointer}
+.map-item:hover{color:var(--blue2)}
+/* qr label */
+.qr-box{text-align:center;padding:20px}
+.qr-svg{margin:12px auto;display:block}
+/* role pills */
+.role-admin{background:var(--rbg);color:var(--red);border-color:var(--rbd)}
+.role-operator{background:var(--gbg);color:var(--green);border-color:var(--gbd)}
+.role-viewer{background:var(--bg3);color:var(--tx2);border-color:var(--bd)}
+/* user row */
+.urow{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd);font-size:13px}
+.urow:last-child{border-bottom:none}
+mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
+.empty{padding:32px;text-align:center;color:var(--tx3);font-size:13px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
+@media(max-width:768px){
+  .main{padding:14px}
+  .fg,.dg4,.dg2{grid-template-columns:1fr}
+  .r2{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr 1fr}
+  .tlh,.tlr{grid-template-columns:80px 50px 1fr 55px}
+  .tlh > *:nth-child(n+5),.tlr > *:nth-child(n+5){display:none}
+  .ah,.ar{grid-template-columns:90px 55px 1fr 70px}
+  .ah > *:nth-child(n+5),.ar > *:nth-child(n+5){display:none}
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><span class="badge">IMS</span> HERMES Inventory Manager</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="sync-badge" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid var(--bd);color:var(--tx3);background:var(--bg3);display:none">---</span>
+    <span id="role-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;background:var(--bg3);border:1px solid var(--bd);color:var(--tx2)">VIEWER</span>
+    <nav class="ntabs">
+      <button class="nb on" id="ntab-inventory">Inventory</button>
+      <button class="nb" id="ntab-log">Transaction Log</button>
+      <button class="nb" id="ntab-reports">Reports</button>
+      <button class="nb" id="ntab-audit">Audit Log</button>
+      <button class="nb" id="ntab-map">Location Map</button>
+      <button class="nb" id="ntab-users">Users</button>
+    </nav>
+  </div>
+</div>
+<div class="main">
+  <div id="sr"></div>
+  <div id="pg"></div>
+</div>
+<div id="md"></div>
+<script>
+
+var KEY = "hermes_v7";
+var SEED = [{"id": "1", "pn": "1-175-1111501", "alt_pn": "", "name": "FUSE 15A 250V V.FAST ACTING", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "2", "pn": "1-175-1112501", "alt_pn": "", "name": "FUSE 25A 250V V.FAST ACTING", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "3", "pn": "1-175-4101501", "alt_pn": "", "name": "FUSE SLOW 15A 250V 3AB", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "4", "pn": "1-175-4102001", "alt_pn": "1-175-4102001", "name": "FUSE 3AB 20A 250V SLOW CERAMIC", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 9, "initialQty": 9, "type": "", "smr": ""}, {"id": "5", "pn": "4640-0000-03", "alt_pn": "4640-0000-00", "name": "INS GENERIC", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "6", "pn": "79-61-00229-00", "alt_pn": "", "name": "CLAMP R.T.D. ENG. ADAPTER", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "7", "pn": "85-20-00070-00", "alt_pn": "", "name": "H900-BRAKE SYSTEM-SPRING", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "8", "pn": "85-61-00530-00", "alt_pn": "", "name": "BUTTON CHOKE ASSY", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "9", "pn": "3220006-00", "alt_pn": "", "name": "FILTER ELEMENT, AE-2-W 60UM", "subsys": "UAV H900", "location": "CAB1", "floor": "1", "qty": 7, "initialQty": 7, "type": "", "smr": ""}, {"id": "10", "pn": "00137353N", "alt_pn": "1-740-0001501", "name": "MONITOR LCD 15\" SUNLIGHT READABL", "subsys": "STE SP", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "11", "pn": "1-780-0000020", "alt_pn": "", "name": "WORK LAMP HD PLASTIC W/GRILL", "subsys": "STE SP", "location": "CAB1", "floor": "1", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "12", "pn": "1-150-0000044", "alt_pn": "", "name": "BULB HALOGEN H3 24V 70W", "subsys": "STE SP", "location": "CAB1", "floor": "1", "qty": 8, "initialQty": 8, "type": "", "smr": ""}, {"id": "13", "pn": "1-150-0000045", "alt_pn": "", "name": "LEMP LED YEL DOME 28V 20MA", "subsys": "STE SP", "location": "CAB1", "floor": "1", "qty": 20, "initialQty": 20, "type": "", "smr": ""}, {"id": "14", "pn": "035449A-00", "alt_pn": "", "name": "GVIUT ASSY", "subsys": "GDT", "location": "CAB1", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "15", "pn": "2175-09447-20", "alt_pn": "", "name": "GDD-QF", "subsys": "GDT", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "16", "pn": "00137907N", "alt_pn": "00078888N", "name": "DISPLAY 20.1IN DC BONDED", "subsys": "GCS", "location": "CAB1", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "17", "pn": "00139014N", "alt_pn": "00088521N", "name": "PC SPEAKER SET 230V IL", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "18", "pn": "00096017N", "alt_pn": "", "name": "COMPACT FLASH 16GB", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 4, "initialQty": 4, "type": "", "smr": ""}, {"id": "19", "pn": "00105256N", "alt_pn": "", "name": "KVM SWITCH", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "20", "pn": "00158937N", "alt_pn": "00107553N", "name": "SERVER NTP/GPS", "subsys": "GCS", "location": "CAB1", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "21", "pn": "00169654N", "alt_pn": "00107812N", "name": "MOUSE OPTICAL USB BLK", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "22", "pn": "00107971N", "alt_pn": "", "name": "TRANSCEIVER VHF/UHF", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "23", "pn": "00108138N", "alt_pn": "", "name": "POWER SUPPLY 220VAC 12VDC", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "24", "pn": "00171272N", "alt_pn": "00109035N", "name": "HD 900GB 3.5IN(1.2)", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "25", "pn": "001253B-01", "alt_pn": "", "name": "STICK, RIGHT HAND", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "26", "pn": "00170956N", "alt_pn": "00125771N", "name": "PC WORK STATION-NVIDIA K600", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "27", "pn": "00170060N", "alt_pn": "106708", "name": "INVERTER MOUDLE", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "28", "pn": "15105112", "alt_pn": "11105112", "name": "AC DRAWER", "subsys": "GCS", "location": "CAB1", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "29", "pn": "19105587", "alt_pn": "11105587", "name": "PDD DC", "subsys": "GCS", "location": "CAB1", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "30", "pn": "1560134", "alt_pn": "1560134", "name": "PDD AC TYPE 3", "subsys": "GCS", "location": "CAB1", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "31", "pn": "1560152", "alt_pn": "", "name": "ALERTS DRAWER", "subsys": "GCS", "location": "CAB1", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "32", "pn": "00126520N", "alt_pn": "1-740-0001002", "name": "BELT-PACK PORTABLE METAL 1CHAN", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "33", "pn": "MB674B-05", "alt_pn": "MB674B-04", "name": "DNRTC TOP ASSY", "subsys": "GCS", "location": "CAB1", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "34", "pn": "00071811N", "alt_pn": "", "name": "EARPHONE PAD", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "35", "pn": "00174189N", "alt_pn": "TCC-2U_P", "name": "VOIP TERMINAL U329_U &  POE", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "36", "pn": "MA812-D", "alt_pn": "", "name": "FCU", "subsys": "GCS", "location": "CAB1", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "37", "pn": "909-61-00100K00", "alt_pn": "95-61-00100K00", "name": "ROTAX ENGINE 100 HR KIT", "subsys": "UAV H900", "location": "CAB2", "floor": "1", "qty": 10, "initialQty": 10, "type": "", "smr": ""}, {"id": "38", "pn": "00101276N", "alt_pn": "", "name": "ANTENNA DME TRNSPONDR KA61 W/T", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "39", "pn": "1-117-0060010", "alt_pn": "", "name": "ANTENNA GPS AT575-62W SMA FEM", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "40", "pn": "00138371N", "alt_pn": "1-117-0230001", "name": "SURGE ARRESTER 300-700MHZ F/F", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "41", "pn": "1-117-0230004", "alt_pn": "", "name": "SURGE ARRESTER 4.4-5.2GHZ", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "42", "pn": "VP30-414", "alt_pn": "1-117-2010040", "name": "SPINNER M ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "43", "pn": "1-117-3500111", "alt_pn": "", "name": "PROPELLER GOVERNER", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "44", "pn": "1-117-3504051", "alt_pn": "", "name": "AMBIANT PRESSURE SENSOR", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "45", "pn": "95-61-00645-00", "alt_pn": "1-117-3505410", "name": "SERVO MOTOR", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "46", "pn": "1-117-3506435", "alt_pn": "RESSISTOR THERMOMETER", "name": "AIRBOX TEMPERATURE SENSOR", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "47", "pn": "1-117-3506502", "alt_pn": "", "name": "AIRBOX PRESSURE SENSOR", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "48", "pn": "909-94-00020-00", "alt_pn": "1-117-3506741", "name": "TURBOCHARGER CONTROL UNIT (TCU)", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "49", "pn": "1-235-0000006", "alt_pn": "", "name": "ANTENNA UHF 400-512MHZ VERTICA", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "50", "pn": "1-235-0000015", "alt_pn": "", "name": "ANTENNA C-BAND", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "51", "pn": "1-235-0010002", "alt_pn": "", "name": "ANTENNA VHF/UHF 30-512MHZ VERTIC", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "52", "pn": "1-235-0103001", "alt_pn": "", "name": "ANTENNA GPS 1575MHZ", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "53", "pn": "1-235-0121001", "alt_pn": "", "name": "ANTENNA PEDESTAL, SINGLE DIRECT", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "54", "pn": "1-345-2914003", "alt_pn": "1-345-2914003", "name": "WATER RADIATOR F/ROTAX ENGINE", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "55", "pn": "45-35-00050-01", "alt_pn": "", "name": "ANTENNA SWITCH", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "56", "pn": "54-62-00400-00", "alt_pn": "", "name": "SERVO ACTUATOR", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "57", "pn": "6001-0000-04", "alt_pn": "6001-0000-01", "name": "INS MEMS", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "58", "pn": "87-42-00100-00", "alt_pn": "70-42-00001-01", "name": "IFF UNIT ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "59", "pn": "75-35-00200-00", "alt_pn": "", "name": "ANTENNA INTERFACE", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "60", "pn": "79-51-00100-00", "alt_pn": "", "name": "TEMPERATURE SENSOR ASSY.", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "61", "pn": "79-61-00229-00", "alt_pn": "", "name": "CLAMP R.T.D. ENG. ADAPTER", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "62", "pn": "85-16-00408-01", "alt_pn": "", "name": "SIDE BRACE ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "63", "pn": "85-16-00417-00", "alt_pn": "", "name": "F.L.G LIMIT SWITCH UP", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "64", "pn": "85-20-00081-00", "alt_pn": "", "name": "MASTER CYLINDER ASSY F/H900", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "65", "pn": "85-31-00050-01", "alt_pn": "85-31-00050-01", "name": "TCU I/F UNIT", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "66", "pn": "85-31-00500-02", "alt_pn": "", "name": "GCU UNIT", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "67", "pn": "85-43-00050-00", "alt_pn": "", "name": "COMM FANS", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "68", "pn": "85-51-00050-01", "alt_pn": "85-51-00050-00", "name": "EGT UNIT", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "69", "pn": "85-61-00090-00", "alt_pn": "", "name": "OIL MAGNETIC PLUG BASE ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "70", "pn": "85-61-00310-00", "alt_pn": "", "name": "EXPANSION TANK REWORK ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "71", "pn": "85-61-00520-00", "alt_pn": "", "name": "THERMOSTAT ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "72", "pn": "85-62-00200-00", "alt_pn": "", "name": "LINEAR ACTUATOR", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "73", "pn": "85-70-00505-01", "alt_pn": "85-70-00505-00", "name": "FUEL PRESSURE SENSOR ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "74", "pn": "85-70-00540-00", "alt_pn": "", "name": "PRESSURE REGULATOR ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "75", "pn": "85-70-00722-00", "alt_pn": "", "name": "ELECTRICAL VALVE ASSY 2, LHS", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "76", "pn": "85-70-00900-00", "alt_pn": "", "name": "FUEL PUMP ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "77", "pn": "89-52-00020-00", "alt_pn": "", "name": "OIL PRESSURE SENSOR", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "78", "pn": "901-36-00100-04", "alt_pn": "901-36-00100-02", "name": "MADU", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "79", "pn": "85-48-00113-00", "alt_pn": "901-48-00100-00", "name": "LIGHT AMBER ASSY, HORIZONTAL", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "80", "pn": "85-48-00110-00", "alt_pn": "901-48-00105-00", "name": "VERTICAL WHITE LIGHT ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "81", "pn": "901-53-00031-00", "alt_pn": "", "name": "AIR TUBE ASSY, PITOT, RHS", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "82", "pn": "901-53-00101-00", "alt_pn": "", "name": "SPACE AGE PITOT ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "83", "pn": "904-61-00852-00", "alt_pn": "", "name": "OIL THERMOSTAT ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "84", "pn": "904-80-00200-01", "alt_pn": "904-80-00200-00", "name": "VCM PAYLOAD", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "85", "pn": "904-80-00250-01", "alt_pn": "904-80-00250-00", "name": "VCM PANO", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "86", "pn": "93-30-00200-05", "alt_pn": "93-30-00200-04", "name": "RMSC", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "87", "pn": "95-16-00257-00", "alt_pn": "", "name": "WOW,NLG", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "88", "pn": "95-18-00585-00", "alt_pn": "", "name": "MLG STOPPER SWITCH", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "89", "pn": "95-26-00103-00", "alt_pn": "95-26-00103-00", "name": "THERMAL TRAY ASSY, IFF AND FDR", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 0, "initialQty": 0, "type": "", "smr": ""}, {"id": "90", "pn": "909-30-00120-00", "alt_pn": "95-30-00120-02", "name": "DUAL MICRO I/O AV", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "91", "pn": "95-30-00250-03", "alt_pn": "", "name": "CENTRAL COMPUTER", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "92", "pn": "95-34-00100-02", "alt_pn": "", "name": "DETONATION DETECTOR I/F UNIT", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "93", "pn": "906-49-00040-01", "alt_pn": "95-49-00040-00", "name": "W40, ENGINE SENSORS TO TCU IB", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 4, "initialQty": 4, "type": "", "smr": ""}, {"id": "94", "pn": "95-49-00042-00", "alt_pn": "", "name": "W42, STARTER CABLE", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "95", "pn": "95-51-00012-00", "alt_pn": "", "name": "FUEL TEMP. SENSOR", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "96", "pn": "95-57-00006-00", "alt_pn": "", "name": "LASER ALTIMETER SENSOR", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "97", "pn": "95-61-00019-00", "alt_pn": "", "name": "DETONATION UNIT ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "98", "pn": "95-61-00021-00", "alt_pn": "", "name": "SAFETY SWITCH ENGINE CUT", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "99", "pn": "95-61-00105-01", "alt_pn": "95-61-00050-01", "name": "THROTTLE CABLE ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "100", "pn": "95-61-00087-00", "alt_pn": "", "name": "OIL RADIATOR ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 7, "initialQty": 7, "type": "", "smr": ""}, {"id": "101", "pn": "95-61-00350-00", "alt_pn": "", "name": "INTERCOOLER ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "102", "pn": "95-61-00356-00", "alt_pn": "", "name": "WG MOD CABLE ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "103", "pn": "95-70-00378-00", "alt_pn": "", "name": "CHECK VALVE 5/16\", 50 PSI", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "104", "pn": "95-80-00120-00", "alt_pn": "", "name": "TAVOR FLIR CAMERA", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "105", "pn": "95-84-00100-01", "alt_pn": "", "name": "FDR", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "106", "pn": "96-31-00200-05", "alt_pn": "96-31-00200-03", "name": "EPDU", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "107", "pn": "96-48-00141-00", "alt_pn": "", "name": "ULTRA LIGHT ASSY, LEFT RED", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "108", "pn": "96-48-00142-00", "alt_pn": "", "name": "VEGA LIGHT ASSY, LEFT RED", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "109", "pn": "96-48-00143-00", "alt_pn": "", "name": "ULTRA LIGHT ASSY, RIGHT GREEN", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "110", "pn": "96-48-00144-00", "alt_pn": "", "name": "VEGA LIGHT ASSY, RIGHT GREEN", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "111", "pn": "M34100", "alt_pn": "M4100", "name": "BWAY VOIP GW MIL  4PRT/LIC", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "112", "pn": "MB0842F-01", "alt_pn": "", "name": "TOP ASSY AVIU-G", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "113", "pn": "MB668B-02", "alt_pn": "", "name": "VIDEO CHANNEL (AVU) TOP ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "114", "pn": "95-61-00830-00", "alt_pn": "", "name": "ALTERNATOR PLATE ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "115", "pn": "95-18-00500-00", "alt_pn": "", "name": "WHEEL 5.00-5 ASSY , MLG", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "116", "pn": "95-61-00618-01", "alt_pn": "95-61-00637-00", "name": "ANTI ICING CARB 1-3 ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "117", "pn": "95-61-00619-01", "alt_pn": "95-61-00638-00", "name": "ANTI ICING CARB 2-4 ASSY", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "118", "pn": "95-63-00040-02", "alt_pn": "", "name": "MAG FUEL LEVEL SENSOR, LONG", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "119", "pn": "95-63-00030-02", "alt_pn": "", "name": "MAG FUEL LEVEL SENSOR, SHORT", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "120", "pn": "3920610-01", "alt_pn": "", "name": "FILTER ASSY, AE-2-W 60UM", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 5, "initialQty": 5, "type": "", "smr": ""}, {"id": "121", "pn": "85-70-00530-00", "alt_pn": "", "name": "FUEL FLOW", "subsys": "UAV H900", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "122", "pn": "909-61-00300K00", "alt_pn": "902-61-00300K00", "name": "ROTAX ENGINE 300 HR KIT", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 5, "initialQty": 5, "type": "", "smr": ""}, {"id": "123", "pn": "95-61-00025K00", "alt_pn": "", "name": "ROTAX ENGINE 25 HR KIT", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 4, "initialQty": 4, "type": "", "smr": ""}, {"id": "124", "pn": "1-117-0130030", "alt_pn": "", "name": "SPARK PLUG", "subsys": "UAV H900", "location": "CAB3", "floor": "3", "qty": 30, "initialQty": 30, "type": "", "smr": ""}, {"id": "125", "pn": "902-61-00088-00", "alt_pn": "", "name": "GEARBOX", "subsys": "UAV H900", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "126", "pn": "00153615N", "alt_pn": "1-740-0000087", "name": "KEYBOARD TOUCH PAD MODULE 88KEY", "subsys": "STE SP", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "127", "pn": "95-94-00500-00", "alt_pn": "", "name": "FLT kit", "subsys": "STE SP", "location": "CAB3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "128", "pn": "00138133N", "alt_pn": "00087790N", "name": "TRANSCEIVER VHF", "subsys": "GCS", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "129", "pn": "M8442A", "alt_pn": "", "name": "BWAY VOIP GW,8P,FXS", "subsys": "GCS", "location": "CAB3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "130", "pn": "CADTS10010", "alt_pn": "", "name": "ADT E-MDLS S-BAND SP6T ASSY", "subsys": "", "location": "CAB3", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "131", "pn": "900-16-00200-00", "alt_pn": "95-16-00200-00", "name": "NLG MAIN ASSY", "subsys": "UAV H900", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "132", "pn": "904-61-00001-00", "alt_pn": "", "name": "ENGINE BUILD UP ASSY", "subsys": "UAV H900", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "133", "pn": "904-69-00100-00", "alt_pn": "", "name": "PUSHER PROP", "subsys": "UAV H900", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "134", "pn": "509-94-00552-00", "alt_pn": "", "name": "UAV SUPPORT VEHICLE VMS", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "135", "pn": "909-94-00200-00", "alt_pn": "", "name": "UAV 900 CONTAINER - GREEN", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 3, "initialQty": 3, "type": "", "smr": ""}, {"id": "136", "pn": "95-94-00497-00", "alt_pn": "", "name": "UAV TOOLS BOX", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "137", "pn": "903-94-00100-03", "alt_pn": "", "name": "POD INSTALLATION TROLLEY", "subsys": "SKEYE", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "138", "pn": "2175-09567-20", "alt_pn": "", "name": "BEACON", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "139", "pn": "70-94-00086-00", "alt_pn": "", "name": "REFUELING CART 1000L", "subsys": "PERIPHERALS", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "140", "pn": "85-94-00430-02", "alt_pn": "", "name": "BAY INSTALLATION TROLLEY", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "141", "pn": "95-94-00411-00", "alt_pn": "", "name": "LIFTING CRANE", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "142", "pn": "2083L-00-00", "alt_pn": "", "name": "LIFTING CART", "subsys": "AMPS", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "143", "pn": "85-94-00087-00", "alt_pn": "", "name": "VEHICLE TOW BAR", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "144", "pn": "95-94-00088-00", "alt_pn": "", "name": "LANDING GEAR CONTROLLER", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "145", "pn": "903-94-00150-00", "alt_pn": "", "name": "GROUND AC UNIT 220Z/50HZ SKEYE", "subsys": "SKEYE", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "146", "pn": "85-94-00301-00", "alt_pn": "", "name": "TOW BAR FOR H900", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "147", "pn": "24-38-00110-03", "alt_pn": "24-38-00110-02", "name": "LI-ION BATTERY CHARGER", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "148", "pn": "99-94-00445-00", "alt_pn": "99-94-00450-00", "name": "SPACIAL TOOLS ENGINE ROTAX 914LT", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "149", "pn": "950-94-00452-00", "alt_pn": "", "name": "GCS TOOL BOX", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "150", "pn": "903-94-00105-00", "alt_pn": "", "name": "SKEYE POD CONTAINER", "subsys": "SKEYE", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "151", "pn": "85-94-00443-00", "alt_pn": "", "name": "ENGINE CONTAINER 914", "subsys": "BOX", "location": "HANGAR", "floor": "0", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "152", "pn": "96-94-00640-00", "alt_pn": "", "name": "UAV CALIBRATION TOOL", "subsys": "GENERAL", "location": "CAB 3", "floor": "3", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "153", "pn": "85-94-00084-00", "alt_pn": "", "name": "FORWARD SUPPORT ADAPTER", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "154", "pn": "85-94-00085-00", "alt_pn": "", "name": "REAR SUPPORT ADAPTER", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "155", "pn": "00128085N", "alt_pn": "", "name": "BLOWER BRUSHLESS 120VDC 5.7\"", "subsys": "SKEYE", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "156", "pn": "95-99-00360-00", "alt_pn": "", "name": "ADAPTER FOR PITOT PROBE MPS43", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "157", "pn": "501-94-00430-00", "alt_pn": "", "name": "GCS MAINTENANCE KIT", "subsys": "GENERAL", "location": "CAB 4", "floor": "2", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "158", "pn": "96-94-00223-00", "alt_pn": "", "name": "MPR BAY BOX", "subsys": "RADAR", "location": "HANGAR", "floor": "0", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "159", "pn": "1-497-9111001", "alt_pn": "", "name": "CASE ALUMINUM 200X100X110CM", "subsys": "PERIPHERALS", "location": "HANGAR", "floor": "0", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "160", "pn": "85-94-00461-00", "alt_pn": "", "name": "ACCESSORY FUEL DRAIN", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "161", "pn": "HEC-GSE-900-075-600", "alt_pn": "", "name": "SLING ASSY", "subsys": "SKEYE", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "162", "pn": "96-94-00520-00", "alt_pn": "", "name": "D-COMPASS SLING", "subsys": "DCOMPASS", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "163", "pn": "95-99-00078-00", "alt_pn": "", "name": "TAE ENGINE STAND - ASSY", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "164", "pn": "1-190-6012015", "alt_pn": "", "name": "HOSE FUME RUBBER 75 MM", "subsys": "SKEYE", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "165", "pn": "00155279N", "alt_pn": "", "name": "JACK 4-LEGS 19 /34  F/AIRCRAFT", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "166", "pn": "77-94-00300-00", "alt_pn": "", "name": "NITROGEN KIT", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "167", "pn": "95-99-00010-00", "alt_pn": "95-96-00017-00 is part of 95-99-00445-00", "name": "SYNCHROMATE HARNESS", "subsys": "GENERAL", "location": "UAV Tool box", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "168", "pn": "96-94-00310-00", "alt_pn": "", "name": "WING SUPPORT ADAPTER", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "169", "pn": "85-94-00435-00", "alt_pn": "", "name": "ENGINE SLING", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "170", "pn": "00132374N", "alt_pn": "00117208N", "name": "HARD DISK 1TB THINKPAD SEC", "subsys": "GENERAL", "location": "CAB 4", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "171", "pn": "85-99-00177-00", "alt_pn": "", "name": "MLG GUIDE TOOL", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "172", "pn": "85-94-00463-00", "alt_pn": "", "name": "V-TAIL REMOVE TOOL", "subsys": "GENERAL", "location": "CAB 3", "floor": "1", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "173", "pn": "ZZJERRYCAN20", "alt_pn": "", "name": "JERYCAN 20 LI", "subsys": "PERIPHERALS", "location": "HANGAR", "floor": "0", "qty": 4, "initialQty": 4, "type": "", "smr": ""}, {"id": "174", "pn": "1-780-0000028", "alt_pn": "", "name": "LADDER 2STEPS H=0.55M ALUMINIUM", "subsys": "GENERAL", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "175", "pn": "77-96-00101-00", "alt_pn": "", "name": "UAV GROUNDING CABLE", "subsys": "GENERAL", "location": "CAB 3", "floor": "4", "qty": 3, "initialQty": 3, "type": "", "smr": ""}, {"id": "176", "pn": "SOGA3000A", "alt_pn": "", "name": "EAR PROTECTOR", "subsys": "PERIPHERALS", "location": "CAB 3", "floor": "4", "qty": 5, "initialQty": 5, "type": "", "smr": ""}, {"id": "177", "pn": "EL-GSE007", "alt_pn": "", "name": "LOM", "subsys": "PERIPHERALS", "location": "CAB 3", "floor": "4", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "178", "pn": "EL-GSE009", "alt_pn": "", "name": "OIL SPILL", "subsys": "PERIPHERALS", "location": "CAB 3", "floor": "4", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "179", "pn": "EL-GSE010", "alt_pn": "", "name": "PORTABLE TOOLS BOX", "subsys": "PERIPHERALS", "location": "HANGAR", "floor": "0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "180", "pn": "00143369N", "alt_pn": "", "name": "SAFETY VEST YELLOW", "subsys": "PERIPHERALS", "location": "CAB 3", "floor": "4", "qty": 5, "initialQty": 5, "type": "", "smr": ""}, {"id": "181", "pn": "EL-GSE033", "alt_pn": "", "name": "GROUNDING PEG", "subsys": "PERIPHERALS", "location": "GSC", "floor": "0", "qty": 8, "initialQty": 8, "type": "", "smr": ""}, {"id": "182", "pn": "EL-GSE053", "alt_pn": "", "name": "TEST TUBE", "subsys": "PERIPHERALS", "location": "CAB 3", "floor": "4", "qty": 4, "initialQty": 4, "type": "", "smr": ""}, {"id": "183", "pn": "1-117-3509222", "alt_pn": "", "name": "WATER TUBE", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 0, "initialQty": 0, "type": "", "smr": ""}, {"id": "184", "pn": "1-495-2700101", "alt_pn": "", "name": "TUBE PU ID=5/8", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 95, "initialQty": 95, "type": "", "smr": ""}, {"id": "185", "pn": "1-495-2700052", "alt_pn": "", "name": "TUBE PU ID=5/16", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 100, "initialQty": 100, "type": "", "smr": ""}, {"id": "186", "pn": "1-397-9910002", "alt_pn": "", "name": "LATCH OVER-CENTER DOUBLE BUT.0", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 15, "initialQty": 15, "type": "", "smr": ""}, {"id": "187", "pn": "95-70-00378-00", "alt_pn": "", "name": "CHECK VALVE, 5/16 , 50 PSI", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "188", "pn": "1-235-0003006", "alt_pn": "", "name": "ANTENNA L-BAND OMNI TNC FEMALE", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "189", "pn": "1806A000", "alt_pn": "", "name": "C.BAND.PLANAR.ANTENNA", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "190", "pn": "20540911031", "alt_pn": "", "name": "PRC - 710MBN", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "191", "pn": "IOA-4451-2-ARL-SA", "alt_pn": "", "name": "ANT OUTLINE", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "192", "pn": "6001-0000-04", "alt_pn": "", "name": "INS MEMS", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "193", "pn": "00171271N", "alt_pn": "", "name": "HARD DRIVE 1TB 7.2RPM SATA 6GB", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "194", "pn": "965442", "alt_pn": "", "name": "SMD ELECTRONIC MODULE", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "195", "pn": "80-80-00160-01", "alt_pn": "", "name": "SPLITTER ASSY - CONFIG.  S", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 0, "initialQty": 0, "type": "", "smr": ""}, {"id": "196", "pn": "85-70-00530-00", "alt_pn": "", "name": "FUEL FLOW", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "197", "pn": "904-80-00250-01", "alt_pn": "", "name": "VCM PANO", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "198", "pn": "95-61-00830-00", "alt_pn": "", "name": "ALTERNATOR PLATE ASSY.", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "199", "pn": "95-61-00618-01", "alt_pn": "", "name": "CONSTANT DEPRESSION CARB1/3-AS", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "200", "pn": "95-61-00619-01", "alt_pn": "", "name": "CONSTANT DEPRESSION CARB2/4-AS", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 3, "initialQty": 3, "type": "", "smr": ""}, {"id": "201", "pn": "95-61-00060-00", "alt_pn": "", "name": "MAP SENSOR HOSE", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "202", "pn": "901-31-00037-00", "alt_pn": "", "name": "fuse board assy", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "203", "pn": "85-20-00081-00", "alt_pn": "", "name": "MASTER CYLINDER ASSY", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "204", "pn": "85-70-00721-00", "alt_pn": "", "name": "ELECTRICAL VALVE ASSY, RHS", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "205", "pn": "85-43-00050-00", "alt_pn": "", "name": "COMM FANS", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "206", "pn": "cadts10011", "alt_pn": "", "name": "adt emdls", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "207", "pn": "1-918-000", "alt_pn": "", "name": "MANAGED GIGABIT SWITH 918", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "208", "pn": "PW7700-DDN-RNN-TBN", "alt_pn": "", "name": "ENCLOSURE PWRPAK7 SINGLE ANTEN", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "209", "pn": "00162839N", "alt_pn": "", "name": "SCREW CAP SOCK ST M 6X20 12.9Z", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 0, "initialQty": 0, "type": "", "smr": ""}, {"id": "210", "pn": "MB669B-03", "alt_pn": "", "name": "GVIU MODULE TOP ASSY", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "211", "pn": "95-94-00600-00", "alt_pn": "", "name": "GPU-RB25A HARNESS", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "212", "pn": "00125524N", "alt_pn": "", "name": "KEYBOARD US ENGLISH BLK USB", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "213", "pn": "950-94-00445-00", "alt_pn": "", "name": "WEIGHTING SYSTEM 1000", "subsys": "", "location": "UNKNOWN", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "214", "pn": "902-61-00514-00", "alt_pn": "", "name": "AIR FILTER ASSY", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "215", "pn": "1-780-0000029", "alt_pn": "", "name": "AEROROLLER-1000 (2 ROLLER SET)", "subsys": "", "location": "UNKNOWN", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "216", "pn": "95-61-00064-00", "alt_pn": "", "name": "ROTAX MODIFIED AIRBOX", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "217", "pn": "85-61-00441-00", "alt_pn": "", "name": "OVERFLOW BOTTLE ASSY", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "218", "pn": "VP30-414", "alt_pn": "", "name": "SPINNER", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "219", "pn": "15105112", "alt_pn": "", "name": "ac", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "220", "pn": "95-61-00704-00", "alt_pn": "", "name": "MUFFLER TC ASSY", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "221", "pn": "00126520N", "alt_pn": "", "name": "BELT PACK 4-WIRE INTERCOM SYST", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "222", "pn": "79-55-00101-00", "alt_pn": "", "name": "MAGNETOMETER UNIT 3 AXIS", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "223", "pn": "70-2420-8TAS605", "alt_pn": "", "name": "TA UNIT", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "224", "pn": "00171272N", "alt_pn": "", "name": "HD 900GB 3.5IN(1.2TB)", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "225", "pn": "1-210-2000014", "alt_pn": "", "name": "STATIC INVERTER 400HZ TSO'D", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "226", "pn": "93-94-00095-00", "alt_pn": "", "name": "PS- FLT", "subsys": "", "location": "CAB4", "floor": "", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "227", "pn": "00169480N", "alt_pn": "", "name": "SERVER POWEREDGE R740 2U16DISK", "subsys": "", "location": "CAB2", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "228", "pn": "00169315N", "alt_pn": "", "name": "DELL POWER EDGE R740", "subsys": "", "location": "CAB2", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "229", "pn": "X9V04UA#ABA", "alt_pn": "", "name": "HP Z640 WORKSTATION", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "230", "pn": "16101101", "alt_pn": "", "name": "PDU AC", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "231", "pn": "0044513B-00", "alt_pn": "", "name": "SKEYE B POWER UNIT", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "232", "pn": "1-380-4221106", "alt_pn": "", "name": "SCREW FH PHIL CRES NC 4-40X1/2", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 10, "initialQty": 10, "type": "", "smr": ""}, {"id": "233", "pn": "95-16-00252-01", "alt_pn": "", "name": "WHEEL SHAFT", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 2, "initialQty": 2, "type": "", "smr": ""}, {"id": "234", "pn": "1JS10A4#ABT", "alt_pn": "", "name": "HP Z27N G2 DISPLAY", "subsys": "", "location": "CAB5", "floor": "", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "235", "pn": "MB1193G-00", "alt_pn": "", "name": "Video Server (VS)", "subsys": "", "location": "CAB5", "floor": "", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "236", "pn": "102163", "alt_pn": "", "name": "UPS 19\"", "subsys": "", "location": "CAB2", "floor": "", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "237", "pn": "00152212N", "alt_pn": "", "name": "MONITOR 22  ANTIGLARE W/LED BA", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "238", "pn": "700-00185-001", "alt_pn": "", "name": "TAS605A", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "239", "pn": "95-70-00070-00", "alt_pn": "", "name": "CORK GASKET 2.4 MM", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "240", "pn": "85-16-00417-00", "alt_pn": "", "name": "F.L.G LIMIT SWITCH UP", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "241", "pn": "99-99-00411-00", "alt_pn": "", "name": "D-COMPAASS SPARE PARTS", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "242", "pn": "00115409N", "alt_pn": "", "name": "MOUSE OPTICAL USB BLK", "subsys": "", "location": "CAB4", "floor": "4.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "243", "pn": "24-38-00110-03", "alt_pn": "", "name": "LI-ION BATTERY CHARGER", "subsys": "", "location": "CAB4", "floor": "2.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "244", "pn": "00084962N", "alt_pn": "", "name": "CABLE ASSY RJ45 TO DB9 FEMALE", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "245", "pn": "85-94-00461-00", "alt_pn": "", "name": "FUEL DRAIN ACCESSORY", "subsys": "", "location": "CAB3", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "246", "pn": "85-94-00461-00", "alt_pn": "", "name": "FUEL DRAIN ACCESSORY", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "247", "pn": "85-99-00177-00", "alt_pn": "", "name": "MLG GUIDE TOOL", "subsys": "", "location": "CAB4", "floor": "3.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "248", "pn": "96-94-00150-00", "alt_pn": "", "name": "FUEL DRAIN ACCESSORY", "subsys": "", "location": "CAB3", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "249", "pn": "00132374N", "alt_pn": "", "name": "PORTABLE HD TP USB3 1TB SECURE", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "250", "pn": "902-49-00826-00", "alt_pn": "", "name": "W826 DCOMPASS DEBUG HARNESS", "subsys": "", "location": "CAB3", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "251", "pn": "79-91-00458-00", "alt_pn": "", "name": "LOADER CABEL FOR C.C", "subsys": "", "location": "CAB3", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "252", "pn": "77-96-00101-00", "alt_pn": "", "name": "UAV GROUNDING CABLE", "subsys": "", "location": "CAB3", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "253", "pn": "00082516N", "alt_pn": "", "name": "DIGITAL REFRACTOMETER PALM ABB", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "254", "pn": "95-99-00913-00", "alt_pn": "", "name": "BRAKE LINING   DISK THICK GAUG", "subsys": "", "location": "CAB3", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "255", "pn": "1-117-3506260", "alt_pn": "", "name": "CHECK GAUGE CS-PTO", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "256", "pn": "95-99-00333-00", "alt_pn": "", "name": "DOWEL PIN EXTRACTOR", "subsys": "", "location": "CAB4", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "257", "pn": "950-94-00510-00", "alt_pn": "", "name": "BRAKE SYSTEM BLEEDING", "subsys": "", "location": "CAB3", "floor": "1.0", "qty": 1, "initialQty": 1, "type": "", "smr": ""}, {"id": "258", "pn": "21757229700", "alt_pn": "", "name": "ADT", "subsys": "", "location": "CAB4", "floor": "", "qty": 0, "initialQty": 0, "type": "", "smr": ""}, {"id": "259", "pn": "00108982N", "alt_pn": "", "name": "BAT CHARGER", "subsys": "", "location": "CAB4", "floor": "", "qty": 0, "initialQty": 0, "type": "", "smr": ""}, {"id": "260", "pn": "1-780-0000019", "alt_pn": "", "name": "SPOTLIGHT COMET", "subsys": "", "location": "CAB4", "floor": "", "qty": 2, "initialQty": 2, "type": "", "smr": ""}];
+
+// ── USERS & ROLES ─────────────────────────────────────────────────────────────
+// Roles: admin = full access | operator = draw/receive/edit | viewer = read only
+var DEFAULT_USERS = [
+  {id:"1", name:"Admin", pin:"1234", role:"admin"},
+  {id:"2", name:"Operator", pin:"0000", role:"operator"},
+  {id:"3", name:"Viewer", pin:"9999", role:"viewer"}
+];
+
+var S = {
+  items:[], tx:[], users:[], tab:"inventory",
+  search:"", fLoc:"", fSub:"", fType:"", fExp:"",
+  sCol:"", sDir:1, modal:null,
+  currentUser: null, _statFilter: null
+};
+
+function canEdit()   { return S.currentUser && (S.currentUser.role === "admin" || S.currentUser.role === "operator"); }
+function canAdmin()  { return S.currentUser && S.currentUser.role === "admin"; }
+function roleCls(r)  { return r==="admin"?"role-admin":r==="operator"?"role-operator":"role-viewer"; }
+
+
+// ── GOOGLE SHEETS BACKEND ────────────────────────────────────────────────────
+// Replace this with your deployed Google Apps Script URL
+var SCRIPT_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE";
+var SYNC_INTERVAL = null;
+
+function syncStatus() { return SCRIPT_URL !== "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE"; }
+
+function loadFromSheets(callback) {
+  if (!syncStatus()) { if(callback) callback(false); return; }
+  showSyncBadge("loading");
+  fetch(SCRIPT_URL + "?action=getAll", {method:"GET"})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.items) {
+        S.items = d.items;
+        S.tx    = d.tx    || [];
+        S.users = d.users || S.users;
+        showSyncBadge("ok");
+        if(callback) callback(true);
+      } else { showSyncBadge("err"); if(callback) callback(false); }
+    })
+    .catch(function(){ showSyncBadge("err"); if(callback) callback(false); });
+}
+
+function pushToSheets() {
+  if (!syncStatus()) return;
+  showSyncBadge("saving");
+  var payload = JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users});
+  fetch(SCRIPT_URL, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain"},
+    body: payload
+  })
+  .then(function(r){return r.json();})
+  .then(function(d){ showSyncBadge(d.ok?"ok":"err"); })
+  .catch(function(){ showSyncBadge("err"); });
+}
+
+function showSyncBadge(state) {
+  var el = document.getElementById("sync-badge");
+  if (!el) return;
+  var cfg = {
+    loading: {txt:"Syncing...",  col:"var(--amber)", bg:"var(--abg)"},
+    saving:  {txt:"Saving...",   col:"var(--amber)", bg:"var(--abg)"},
+    ok:      {txt:"Live",        col:"var(--green)", bg:"var(--gbg)"},
+    err:     {txt:"Offline",     col:"var(--red)",   bg:"var(--rbg)"}
+  };
+  var c = cfg[state] || cfg.err;
+  el.textContent = c.txt;
+  el.style.color = c.col;
+  el.style.background = c.bg;
+  el.style.borderColor = c.col;
+}
+
+function startAutoSync() {
+  if (!syncStatus()) return;
+  if (SYNC_INTERVAL) clearInterval(SYNC_INTERVAL);
+  SYNC_INTERVAL = setInterval(function(){
+    loadFromSheets(function(ok){ if(ok){ renderAll(); } });
+  }, 30000); // refresh every 30 seconds
+}
+
+function load() {
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) {
+      var d = JSON.parse(raw);
+      S.items = d.items || cp(SEED);
+      S.tx    = d.tx    || [];
+      S.users = d.users || cp(DEFAULT_USERS);
+    } else {
+      S.items = cp(SEED);
+      S.tx    = [];
+      S.users = cp(DEFAULT_USERS);
+      save();
+    }
+  } catch(e) { S.items=cp(SEED); S.tx=[]; S.users=cp(DEFAULT_USERS); }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users})); } catch(e) {}
+  pushToSheets();
+}
+function cp(x)  { return JSON.parse(JSON.stringify(x)); }
+function gv(id) { var el=document.getElementById(id); return el?el.value:""; }
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function fd(iso) {
+  if (!iso) return "---";
+  return new Date(iso).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+}
+function tod() { return new Date().toISOString().split("T")[0]; }
+function uniq(f) { return[...new Set(S.items.map(function(i){return i[f];}).filter(Boolean))].sort(); }
+
+function sst(item) {
+  if (!item.qty) return "zero";
+  var r = item.initialQty>0 ? item.qty/item.initialQty : 1;
+  if (item.initialQty<=2) return item.qty<item.initialQty?"low":"ok";
+  return r<=0.20?"crit":r<=0.40?"low":"ok";
+}
+function scls(item) { return{ok:"sok",low:"slow",crit:"scrit",zero:"szero"}[sst(item)]; }
+function scell(item){ return'<span class="sn '+scls(item)+'">'+item.qty+'</span>'; }
+
+function est(item) {
+  if (!item.expiry) return null;
+  var d = (new Date(item.expiry)-Date.now())/86400000;
+  return d<0?"gone":d<=30?"soon":"ok";
+}
+function ecell(item) {
+  var s=est(item);
+  if (!s) return'<span style="color:var(--tx3);font-size:12px">---</span>';
+  var cls={ok:"eok",soon:"esoon",gone:"egone"}[s];
+  var pre=s==="gone"?"[!] ":s==="soon"?"[~] ":"";
+  return'<span class="'+cls+'">'+pre+fd(item.expiry)+'</span>';
+}
+
+function hl(txt) {
+  if (!S.search.trim()) return esc(txt);
+  var q=S.search.trim().replace(/[-[\]{}()*+?.,\\^$|#]/g,"\\$&");
+  return esc(String(txt)).replace(new RegExp("("+q+")","gi"),"<mark>$1</mark>");
+}
+
+function byCol(col){ if(S.sCol===col)S.sDir*=-1;else{S.sCol=col;S.sDir=1;} renderPage(); }
+function thc(col) { return S.sCol===col?(S.sDir===1?"asc":"desc"):""; }
+
+function filt() {
+  var q=S.search.trim().toLowerCase();
+  var items=S.items.filter(function(item){
+    if(S._statFilter==="low"&&["low","crit"].indexOf(sst(item))<0)return false;
+    if(S._statFilter==="zero"&&sst(item)!=="zero")return false;
+    if(S._statFilter==="exp"){var se=est(item);if(se!=="soon"&&se!=="gone")return false;}
+    if(!S._statFilter){
+      if(q&&![item.name,item.pn,item.alt_pn||"",item.subsys||"",item.smr||""].some(function(v){return v.toLowerCase().indexOf(q)>=0;}))return false;
+      if(S.fLoc&&item.location!==S.fLoc)return false;
+      if(S.fSub&&item.subsys!==S.fSub)return false;
+      if(S.fType&&item.type!==S.fType)return false;
+      if(S.fExp){var es=est(item);if(S.fExp==="expiring"&&!(es==="soon"||es==="gone"))return false;if(S.fExp==="expired"&&es!=="gone")return false;}
+    }
+    return true;
+  });
+  if(S.sCol) items=items.slice().sort(function(a,b){
+    var av=a[S.sCol],bv=b[S.sCol];
+    if(S.sCol==="qty"||S.sCol==="initialQty"){av=+av||0;bv=+bv||0;}
+    else{av=String(av||"").toLowerCase();bv=String(bv||"").toLowerCase();}
+    return av<bv?-S.sDir:av>bv?S.sDir:0;
+  });
+  return items;
+}
+
+function wk() {
+  var n=new Date(),d=n.getDay(),m=new Date(n);
+  m.setDate(n.getDate()-(d===0?6:d-1)); m.setHours(0,0,0,0);
+  var s=new Date(m); s.setDate(m.getDate()+6); s.setHours(23,59,59,999);
+  return[m,s];
+}
+function mo() { var n=new Date(); return[new Date(n.getFullYear(),n.getMonth(),1),new Date(n.getFullYear(),n.getMonth()+1,0,23,59,59)]; }
+function inr(t,r) { var d=new Date(t.date); return d>=r[0]&&d<=r[1]; }
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+function showLogin() {
+  var opts="";
+  S.users.forEach(function(u){ opts+='<option value="'+esc(u.id)+'">'+esc(u.name)+' ('+u.role+')</option>'; });
+  showModal(
+    '<div class="mh"><div class="mt">Sign in to Hermes IMS</div></div>'+
+    '<div class="mb">'+
+    '<div class="fg">'+
+    '<div class="ff"><label class="fl">User</label><select id="login-user" style="width:100%">'+opts+'</select></div>'+
+    '<div class="ff"><label class="fl">PIN</label><input id="login-pin" type="password" placeholder="Enter PIN" style="width:100%" maxlength="8"></div>'+
+    '<div class="ff" id="login-err" style="color:var(--red);font-size:12px;display:none">Incorrect PIN. Try again.</div>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn bp" id="btn-login">Sign in</button></div>',
+    true
+  );
+}
+
+function doLogin() {
+  var uid=gv("login-user"), pin=gv("login-pin");
+  var user=S.users.find(function(u){return u.id===uid;});
+  if (!user||user.pin!==pin) {
+    var err=document.getElementById("login-err");
+    if(err){err.style.display="block";}
+    return;
+  }
+  S.currentUser=user;
+  closeModal();
+  updateRoleBadge();
+  renderAll();
+}
+
+function doLogout() {
+  S.currentUser=null;
+  renderAll();
+  showLogin();
+}
+
+function updateRoleBadge() {
+  var el=document.getElementById("role-badge");
+  if (!el) return;
+  if (!S.currentUser) { el.textContent="Not signed in"; el.className=""; el.style.cssText="font-size:11px;padding:3px 10px;border-radius:12px;background:var(--rbg);border:1px solid var(--rbd);color:var(--red);cursor:pointer"; return; }
+  el.textContent=S.currentUser.name+" ("+S.currentUser.role+")";
+  el.className=roleCls(S.currentUser.role);
+  el.style.cssText="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid;cursor:pointer";
+}
+
+// ── QR GENERATOR ─────────────────────────────────────────────────────────────
+function makeQR(text) {
+  // Simple QR-like visual using a deterministic grid pattern based on text hash
+  // This creates a visual barcode-style label (not a real scannable QR but visually clear)
+  var size = 21;
+  var hash = 0;
+  for (var i=0; i<text.length; i++) { hash = ((hash<<5)-hash)+text.charCodeAt(i); hash|=0; }
+  var cells = [];
+  for (var r=0; r<size; r++) {
+    cells[r]=[];
+    for (var c2=0; c2<size; c2++) {
+      // finder patterns (corners)
+      var inFinder = (r<7&&c2<7)||(r<7&&c2>13)||(r>13&&c2<7);
+      if (inFinder) { cells[r][c2]=(r===0||r===6||c2===0||c2===6||(r>=2&&r<=4&&c2>=2&&c2<=4))?1:0; }
+      else { var v=(hash^(r*size+c2)*2654435761)&1; cells[r][c2]=v; }
+    }
+  }
+  var cellSize=8;
+  var svgSize=size*cellSize+20;
+  var svg='<svg width="'+svgSize+'" height="'+svgSize+'" xmlns="http://www.w3.org/2000/svg" style="border:1px solid #ccc;background:#fff">';
+  svg+='<rect width="'+svgSize+'" height="'+svgSize+'" fill="white"/>';
+  for (var r2=0; r2<size; r2++) {
+    for (var c3=0; c3<size; c3++) {
+      if (cells[r2][c3]) {
+        svg+='<rect x="'+(c3*cellSize+10)+'" y="'+(r2*cellSize+10)+'" width="'+cellSize+'" height="'+cellSize+'" fill="black"/>';
+      }
+    }
+  }
+  svg+='</svg>';
+  return svg;
+}
+
+function showLabel(id) {
+  var item=S.items.find(function(i){return i.id===id;});
+  if(!item)return;
+  var qrData="PN:"+item.pn+"|"+item.name+"|"+item.location;
+  var qr=makeQR(qrData);
+  showModal(
+    '<div class="mh"><div><div class="mt">Item Label / QR Code</div><div style="font-size:12px;color:var(--tx2);margin-top:3px">'+esc(item.pn)+'</div></div>'+
+    '<button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div class="qr-box">'+
+    '<div class="qr-svg">'+qr+'</div>'+
+    '<div style="font-size:18px;font-weight:700;margin:10px 0 4px">'+esc(item.pn)+'</div>'+
+    '<div style="font-size:13px;color:var(--tx2);margin-bottom:6px">'+esc(item.name)+'</div>'+
+    '<div style="font-size:12px;color:var(--tx3)">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Floor '+item.floor:'')+'</div>'+
+    (item.type?'<div style="font-size:12px;color:var(--tx3);margin-top:4px">'+item.type+(item.smr?' / SMR: '+esc(item.smr):'')+'</div>':'')+'</div>'+
+    '<div style="text-align:center;color:var(--tx3);font-size:12px;padding-bottom:8px">Data encoded: '+esc(qrData)+'</div></div>'+
+    '<div class="mf"><button class="btn" id="btn-print-label" style="margin-right:auto">Print label</button><button class="btn" id="modal-close-btn2">Close</button></div>'
+  );
+  document.getElementById("btn-print-label").onclick=function(){ doPrintLabel(item,qr); };
+}
+
+function doPrintLabel(item,qrSVG) {
+  var w=window.open("","_blank","width=440,height=580");
+  w.document.write('<!DOCTYPE html><html><head><title>Label - '+esc(item.pn)+'</title>'+
+    '<style>body{font-family:monospace;padding:24px;background:#fff;color:#000;text-align:center}'+
+    '.box{border:2px solid #000;padding:20px;max-width:360px;margin:0 auto}'+
+    '.pn{font-size:20px;font-weight:bold;margin:8px 0;word-break:break-all}'+
+    '.nm{font-size:12px;margin-bottom:8px}.meta{font-size:11px;color:#555;margin-top:4px}'+
+    '@media print{.np{display:none}}</style></head><body>'+
+    '<div class="box"><div style="font-size:10px;letter-spacing:2px">HERMES IMS</div>'+
+    qrSVG.replace(/style="[^"]*"/,'style="margin:10px auto;display:block"')+
+    '<div class="pn">'+esc(item.pn)+'</div>'+
+    '<div class="nm">'+esc(item.name)+'</div>'+
+    '<div class="meta">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Fl '+item.floor:'')+'</div>'+
+    (item.type?'<div class="meta">'+esc(item.type)+(item.smr?' / SMR: '+esc(item.smr):'')+'</div>':'')+'</div>'+
+    '<br><button class="np" onclick="window.print()">Print</button>'+
+    '</body></html>');
+  w.document.close();
+}
+
+// ── LOCATION MAP ──────────────────────────────────────────────────────────────
+function renderMap() {
+  var byLoc={};
+  S.items.forEach(function(item){
+    var loc=item.location||"Unknown";
+    if(!byLoc[loc]) byLoc[loc]={};
+    var fl=item.floor||"0";
+    if(!byLoc[loc][fl]) byLoc[loc][fl]=[];
+    byLoc[loc][fl].push(item);
+  });
+  var locs=Object.keys(byLoc).sort();
+  var html='<div class="card"><div class="ch"><div class="ctitle">Location Map</div>'+
+    '<span style="font-size:12px;color:var(--tx2)">Click any item to view details</span></div>'+
+    '<div class="map-grid">';
+  locs.forEach(function(loc){
+    var floors=Object.keys(byLoc[loc]).sort();
+    var alerts=0;
+    Object.values(byLoc[loc]).forEach(function(arr){arr.forEach(function(item){if(sst(item)!=="ok"&&sst(item)!=="zero"||sst(item)==="zero")alerts++;});});
+    html+='<div class="map-cab"><div class="map-cab-title"><span>'+esc(loc)+'</span>'+
+      (alerts?'<span style="background:var(--rbg);color:var(--red);border-radius:10px;padding:1px 7px;font-size:11px">'+alerts+' alert'+(alerts>1?'s':'')+'</span>':
+      '<span style="color:var(--green);font-size:11px">OK</span>')+'</div>';
+    floors.forEach(function(fl){
+      html+='<div class="map-floor"><div class="map-floor-lbl">'+(fl==="0"?"Ground":fl==="1"?"Floor 1":fl==="2"?"Floor 2":fl==="3"?"Floor 3":fl==="4"?"Floor 4":"Floor "+fl)+'</div>';
+      byLoc[loc][fl].forEach(function(item){
+        var sc=sst(item);
+        var dot=sc==="ok"?"var(--green)":sc==="low"?"var(--amber)":sc==="crit"||sc==="zero"?"var(--red)":"var(--tx3)";
+        html+='<div class="map-item" data-action="detail" data-id="'+esc(item.id)+'">'+
+          '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;font-size:12px">'+esc(item.name)+'</span>'+
+          '<span style="display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="width:8px;height:8px;border-radius:50%;background:'+dot+';display:inline-block"></span>'+
+          '<span class="sn '+scls(item)+'" style="font-size:11px;padding:1px 6px;min-width:24px">'+item.qty+'</span></span></div>';
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+  });
+  html+='</div></div>';
+  return html;
+}
+
+// ── USER MANAGEMENT ───────────────────────────────────────────────────────────
+function renderUsers() {
+  if (!canAdmin()) return'<div class="card"><div class="empty">Admin access required to manage users.</div></div>';
+  var rows="";
+  S.users.forEach(function(u){
+    rows+='<div class="urow">'+
+      '<div><div style="font-weight:500">'+esc(u.name)+'</div><div style="font-size:12px;color:var(--tx2)">PIN: '+('*'.repeat(u.pin.length))+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+      '<span class="txd '+roleCls(u.role)+'" style="padding:3px 10px;border-radius:10px;font-size:11px;border:1px solid">'+u.role.toUpperCase()+'</span>'+
+      (u.id!==S.currentUser.id?'<button class="btn sm br" data-action="delUser" data-id="'+esc(u.id)+'">Remove</button>':'<span style="font-size:11px;color:var(--tx3)">(you)</span>')+
+      '</div></div>';
+  });
+  return'<div class="card"><div class="ch"><div class="ctitle">User Management</div>'+
+    '<div style="display:flex;gap:8px;align-items:center">'+
+    (syncStatus()?'<span style="font-size:11px;color:var(--tx2)">Google Sheets: <b style="color:var(--green)">Connected</b></span>':'<span style="font-size:11px;color:var(--tx3)">Google Sheets: <b style="color:var(--red)">Not configured</b></span>')+
+    '<button class="btn bp sm" id="btn-adduser">+ Add user</button></div></div>'+
+    '<div style="padding:16px 18px">'+rows+'</div></div>';
+}
+
+function buildAddUserModal() {
+  return'<div class="mh"><div class="mt">Add new user</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div class="fg">'+
+    '<div class="ff"><label class="fl">Name *</label><input id="u-name" type="text" placeholder="Full name" style="width:100%"></div>'+
+    '<div><label class="fl">PIN *</label><input id="u-pin" type="password" placeholder="4-8 digits" maxlength="8" style="width:100%"></div>'+
+    '<div><label class="fl">Role *</label><select id="u-role" style="width:100%"><option value="viewer">Viewer (read-only)</option><option value="operator">Operator (draw/receive/edit)</option><option value="admin">Admin (full access)</option></select></div>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn bp" id="btn-saveuser">Add user</button></div>';
+}
+
+function doAddUser() {
+  var name=gv("u-name").trim(), pin=gv("u-pin").trim(), role=gv("u-role");
+  if(!name){alert("Enter a name.");return;}
+  if(!pin||pin.length<4){alert("PIN must be at least 4 digits.");return;}
+  S.users.push({id:String(Date.now()),name:name,pin:pin,role:role});
+  save(); closeModal(); renderAll();
+}
+
+function delUser(id) {
+  if(!confirm("Remove this user?"))return;
+  S.users=S.users.filter(function(u){return u.id!==id;});
+  save(); renderAll();
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────────
+function renderStats() {
+  var a=S.items.filter(function(i){return["low","crit"].indexOf(sst(i))>=0;}).length;
+  var z=S.items.filter(function(i){return sst(i)==="zero";}).length;
+  var x=S.items.filter(function(i){var s=est(i);return s==="soon"||s==="gone";}).length;
+  var td=S.tx.filter(function(t){return new Date(t.date).toDateString()===new Date().toDateString();}).length;
+  var syncEl=syncStatus()?'<span id="sync-badge" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid;font-weight:600;margin-left:8px">Live</span>':'';
+  document.getElementById("sr").innerHTML=
+    '<div class="stat-strip">'+
+    si("Total items",S.items.length,"","",null)+
+    sdiv()+
+    si("Low / critical",a,a?"ca":"cg",a?' <span style="font-size:12px;opacity:.6">items</span>':""  ,"filter-low")+
+    sdiv()+
+    si("Out of stock",z,z?"cr":"cg","","filter-zero")+
+    sdiv()+
+    si("Expiring",x,x?"ca":"cg","","filter-exp")+
+    sdiv()+
+    si("Today txs",td,"cb","",null)+
+    sdiv()+
+    si("Total txs",S.tx.length,"","",null)+
+    '</div>';
+  // set sync badge color after render
+  if(syncStatus()) { setTimeout(function(){ showSyncBadge(S._syncState||"ok"); },10); }
+}
+function sdiv(){return'<div class="stat-divider"></div>';}
+function si(l,v,vcls,sub,action){
+  var cls=action?"stat-item clickable":"stat-item";
+  var da=action?' data-stat="'+action+'"':'';
+  return'<div class="'+cls+'"'+da+'>'+
+    '<div class="stat-label">'+l+'</div>'+
+    '<div class="stat-val '+vcls+'">'+v+'</div>'+
+    (sub?'<div class="stat-sub">'+sub+'</div>':'')+
+    '</div>';
+}
+function mk(l,v,c){return'<div class="stat-item"><div class="stat-label">'+l+'</div><div class="stat-val '+c+'">'+v+'</div></div>';}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+function xcsv(){
+  var h=["ID","Part No.","Alt PN","Description","Sub-system","Type","SMR","Location","Floor","Stock","Initial","Expiry","Notes"];
+  var rows=filt().map(function(i){return[i.id,i.pn,i.alt_pn||"",i.name,i.subsys||"",i.type||"",i.smr||"",i.location,i.floor||"",i.qty,i.initialQty,i.expiry||"",i.notes||""].map(function(v){return'"'+String(v).replace(/"/g,'""')+'"';}).join(",");});
+  dl([h.join(",")].concat(rows).join("\n"),"Hermes_Inventory_"+tod()+".csv","text/csv");
+}
+function xtcsv(){
+  var h=["Date","Type","Reason","Item","Part No.","Qty","Remaining","Person","Purpose"];
+  var rows=S.tx.slice().reverse().map(function(t){var item=S.items.find(function(i){return i.id===t.itemId;});return[fd(t.date),t.type,t.reasonCode||"",item?item.name:t.itemName,item?item.pn:"",t.qty,t.remaining,t.person,t.purpose||""].map(function(v){return'"'+String(v).replace(/"/g,'""')+'"';}).join(",");});
+  dl([h.join(",")].concat(rows).join("\n"),"Hermes_Tx_"+tod()+".csv","text/csv");
+}
+function dl(c,fn,mt){var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([c],{type:mt}));a.download=fn;a.click();}
+
+// ── DETAIL MODAL ──────────────────────────────────────────────────────────────
+function dfield(l,v){return'<div class="df"><div class="dfl">'+l+'</div><div class="dfv">'+v+'</div></div>';}
+
+function detailHTML(item){
+  var txs=S.tx.filter(function(t){return t.itemId===item.id;}).sort(function(a,b){return b.ts-a.ts;});
+  var drawn=txs.filter(function(t){return t.type==="draw";}).reduce(function(s,t){return s+t.qty;},0);
+  var recvd=txs.filter(function(t){return t.type==="receive";}).reduce(function(s,t){return s+t.qty;},0);
+  var pct=item.initialQty>0?Math.min(100,Math.round(item.qty/item.initialQty*100)):0;
+  var bc=pct>40?"var(--green)":pct>20?"var(--amber)":"var(--red)";
+  var tl="";
+  if(!txs.length){tl='<div style="color:var(--tx3);font-size:13px;padding:10px 0">No transactions yet for this item.</div>';}
+  else{
+    tl='<div class="tlh"><span>Date</span><span>Type</span><span>Person</span><span>Qty</span><span>Rem.</span><span>Reason / Notes</span></div>';
+    txs.forEach(function(t){
+      var sign=t.type==="draw"?"-":"+";
+      var col=t.type==="draw"?"var(--red)":"var(--green)";
+      var tag=t.type==="draw"?"txdd":"txdr";
+      var lbl=t.type==="draw"?"DRAW":"RECV";
+      var notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
+      tl+='<div class="tlr"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span></div>';
+    });
+  }
+  return'<div class="mh">'+
+    '<div><div class="mt">'+esc(item.name)+'</div>'+
+    '<div style="font-size:12px;color:var(--tx2);margin-top:3px">'+esc(item.pn)+(item.alt_pn?' - Alt: '+esc(item.alt_pn):'')+'</div></div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+
+    (canEdit()?'<button class="btn sm" id="btn-edit-item" data-id="'+esc(item.id)+'">Edit</button>':'')+
+    '<button class="btn sm" id="btn-label-item" data-id="'+esc(item.id)+'">Label / QR</button>'+
+    '<button class="mc" id="modal-close-btn">x</button></div></div>'+
+    '<div class="mb">'+
+    '<div class="ds"><div class="dst">Stock overview</div>'+
+    '<div class="dg4">'+dfield("Current stock",scell(item))+dfield("Original qty",item.initialQty)+dfield("Total drawn",'<span style="color:var(--red);font-weight:600">'+drawn+'</span>')+dfield("Total received",'<span style="color:var(--green);font-weight:600">'+recvd+'</span>')+'</div>'+
+    '<div class="sb"><div class="sbl"><span>0</span><span>'+item.qty+' / '+item.initialQty+' ('+pct+'%)</span></div>'+
+    '<div class="sbb"><div class="sbf" style="width:'+pct+'%;background:'+bc+'"></div></div></div></div>'+
+    '<div class="ds"><div class="dst">Item details</div><div class="dg2">'+
+    dfield("Sub-system",esc(item.subsys)||'<span style="color:var(--tx2)">---</span>')+
+    dfield("Type",item.type?'<span class="tt tt'+item.type+'">'+item.type+'</span>':'<span style="color:var(--tx2)">---</span>')+
+    dfield("SMR code",item.smr?'<span class="smrc">'+esc(item.smr)+'</span>':'<span style="color:var(--tx2)">---</span>')+
+    dfield("Location",'<span class="loctag">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Fl '+item.floor:'')+'</span>')+
+    dfield("Expiry",ecell(item))+
+    dfield("Transactions",txs.length)+
+    '</div>'+(item.notes?'<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx2)">Note: '+esc(item.notes)+'</div>':"")+
+    '</div>'+
+    '<div class="ds"><div class="dst">Transaction history ('+txs.length+')</div>'+tl+'</div>'+
+    '</div>'+
+    '<div class="mf">'+
+    (canEdit()?'<button class="btn br" id="btn-draw-item" data-id="'+esc(item.id)+'">Draw</button><button class="btn bg" id="btn-recv-item" data-id="'+esc(item.id)+'">Receive</button>':'')+
+    '<button class="btn" id="modal-close-btn2">Close</button></div>';
+}
+
+// ── INVENTORY PAGE ────────────────────────────────────────────────────────────
+function renderInventory(){
+  var items=filt();
+  var locs=uniq("location"),subs=uniq("subsys");
+  var locO='<option value="">All locations</option>';
+  locs.forEach(function(l){locO+='<option value="'+esc(l)+'"'+(S.fLoc===l?" selected":"")+'>'+esc(l)+'</option>';});
+  var subO='<option value="">All sub-sys</option>';
+  subs.forEach(function(s){subO+='<option value="'+esc(s)+'"'+(S.fSub===s?" selected":"")+'>'+esc(s)+'</option>';});
+  var typO='<option value="">All types</option>';
+  ["LRU","LRM","Consumable"].forEach(function(t){typO+='<option value="'+t+'"'+(S.fType===t?" selected":"")+'>'+t+'</option>';});
+  var rows="";
+  if(!items.length){rows='<tr><td colspan="10" class="empty">No items match your filters.</td></tr>';}
+  else{items.forEach(function(item){
+    var tt=item.type?'<span class="tt tt'+item.type+'">'+item.type+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
+    var sm=item.smr?'<span class="smrc">'+esc(item.smr)+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
+    var lc='<span class="loctag">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Fl '+item.floor:'')+'</span>';
+    rows+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'">'
+      +'<td><span class="pn">'+hl(item.pn)+'</span></td>'
+      +'<td><span class="apn">'+(item.alt_pn?hl(item.alt_pn):'---')+'</span></td>'
+      +'<td style="max-width:200px">'+hl(item.name)+'</td>'
+      +'<td style="font-size:12px;color:var(--tx2)">'+esc(item.subsys||'---')+'</td>'
+      +'<td>'+tt+'</td><td>'+sm+'</td><td>'+lc+'</td>'
+      +'<td>'+ecell(item)+'</td>'
+      +'<td>'+scell(item)+'</td>'
+      +'<td>'
+      +(canEdit()?'<div style="display:flex;gap:4px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'">Draw</button><button class="btn sm bg" data-action="receive" data-id="'+esc(item.id)+'">Recv</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')
+      +'</td></tr>';
+  });}
+  return'<div class="card"><div class="ch">'+
+    '<div class="ctitle">Inventory <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+items.length+' / '+S.items.length+'</span></div>'+
+    '<div class="bar">'+
+    '<input id="srch" type="text" placeholder="Search..." value="'+esc(S.search)+'" style="width:190px">'+
+    '<select id="fLoc" style="width:105px">'+locO+'</select>'+
+    '<select id="fSub" style="width:105px">'+subO+'</select>'+
+    '<select id="fType" style="width:105px">'+typO+'</select>'+
+    '<select id="fExp" style="width:105px"><option value="">All expiry</option><option value="expiring"'+(S.fExp==="expiring"?" selected":"")+'>Expiring</option><option value="expired"'+(S.fExp==="expired"?" selected":"")+'>Expired</option></select>'+
+    '<button class="btn" id="btn-clear">Clear</button>'+
+    '<button class="btn bg sm" id="btn-xcsv">CSV</button>'+
+    (canEdit()?'<button class="btn bp" id="btn-add">+ Add</button>':'')+
+    '</div></div>'+
+    (S._statFilter?'<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;justify-content:space-between"><span>Filtered: '+{low:"Low &amp; critical stock",zero:"Out of stock",exp:"Expiring / expired"}[S._statFilter]+' ('+items.length+' items)</span><button class="btn sm" id="btn-clearstatf" style="border-color:var(--amber);color:var(--amber)">Clear filter</button></div>':'')+
+    '<div class="tw"><table><thead><tr>'+
+    '<th data-sort="pn" class="'+thc("pn")+'">Part No.</th><th>Alt PN</th>'+
+    '<th data-sort="name" class="'+thc("name")+'">Description</th>'+
+    '<th data-sort="subsys" class="'+thc("subsys")+'">Sub-sys</th>'+
+    '<th data-sort="type" class="'+thc("type")+'">Type</th>'+
+    '<th data-sort="smr" class="'+thc("smr")+'">SMR</th>'+
+    '<th data-sort="location" class="'+thc("location")+'">Location</th>'+
+    '<th data-sort="expiry" class="'+thc("expiry")+'">Expiry</th>'+
+    '<th data-sort="qty" class="'+thc("qty")+'">Stock</th>'+
+    '<th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+
+// ── LOG PAGE ──────────────────────────────────────────────────────────────────
+function renderLog(){
+  var txs=S.tx.slice().reverse();
+  var rows=!txs.length?'<tr><td colspan="8" class="empty">No transactions yet.</td></tr>':"";
+  txs.forEach(function(t){
+    var item=S.items.find(function(i){return i.id===t.itemId;});
+    rows+='<tr>'
+      +'<td style="white-space:nowrap;font-size:12px;color:var(--tx2)">'+fd(t.date)+'</td>'
+      +'<td><span class="txd '+(t.type==="draw"?"txdd":"txdr")+'">'+(t.type==="draw"?"DRAW":"RECEIVE")+'</span></td>'
+      +'<td style="font-size:11px;color:var(--tx2)">'+esc(t.reasonCode||'---')+'</td>'
+      +'<td><div>'+esc(item?item.name:t.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:'')+'</div></td>'
+      +'<td style="font-weight:600;color:'+(t.type==="draw"?"var(--red)":"var(--green)")+'">'+(t.type==="draw"?"-":"+")+t.qty+'</td>'
+      +'<td style="color:var(--tx2)">'+t.remaining+'</td>'
+      +'<td style="font-weight:500">'+esc(t.person)+'</td>'
+      +'<td style="color:var(--tx2);font-size:12px">'+esc(t.purpose||'---')+'</td>'
+      +'</tr>';
+  });
+  return'<div class="card"><div class="ch"><div class="ctitle">Transaction Log <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+txs.length+' records</span></div>'+
+    '<button class="btn bg sm" id="btn-xtcsv">Export CSV</button></div>'+
+    '<div class="tw"><table><thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Item</th><th>Qty</th><th>Remaining</th><th>Person</th><th>Purpose</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div></div>';
+}
+
+// ── REPORTS PAGE ──────────────────────────────────────────────────────────────
+function renderReports(){
+  var wr=wk(),mr=mo();
+  var wt=S.tx.filter(function(t){return inr(t,wr);}),mt=S.tx.filter(function(t){return inr(t,mr);});
+  var ai=S.items.filter(function(i){return["low","crit","zero"].indexOf(sst(i))>=0;});
+  var xi=S.items.filter(function(i){var s=est(i);return s==="soon"||s==="gone";});
+  function rblock(title,txs){
+    var draws=txs.filter(function(t){return t.type==="draw";}),recvs=txs.filter(function(t){return t.type==="receive";});
+    var dq=draws.reduce(function(s,t){return s+t.qty;},0),rq=recvs.reduce(function(s,t){return s+t.qty;},0);
+    var bi={},bp={},br={};
+    draws.forEach(function(t){var n=(S.items.find(function(i){return i.id===t.itemId;})||{name:t.itemName}).name;bi[n]=(bi[n]||0)+t.qty;bp[t.person]=(bp[t.person]||0)+t.qty;if(t.reasonCode)br[t.reasonCode]=(br[t.reasonCode]||0)+1;});
+    var ti=Object.entries(bi).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+    var tp=Object.entries(bp).sort(function(a,b){return b[1]-a[1];}).slice(0,5);
+    var tr2=Object.entries(br).sort(function(a,b){return b[1]-a[1];}).slice(0,4);
+    var h='<div class="rb"><div class="rh">'+title+'</div>'+
+      '<div class="ms2"><div class="ms"><div class="msl">Draws</div><div class="msv" style="color:var(--red)">'+draws.length+'</div><div style="font-size:10px;color:var(--tx3)">'+dq+' units</div></div>'+
+      '<div class="ms"><div class="msl">Receives</div><div class="msv" style="color:var(--green)">'+recvs.length+'</div><div style="font-size:10px;color:var(--tx3)">'+rq+' units</div></div></div>';
+    h+='<div style="font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Top drawn items</div>';
+    if(!ti.length)h+='<div style="font-size:12px;color:var(--tx3)">No draws this period</div>';
+    else ti.forEach(function(x){h+='<div class="rli"><span class="rlin">'+esc(x[0].length>44?x[0].slice(0,44)+"...":x[0])+'</span><span style="font-weight:600;color:var(--red)">-'+x[1]+'</span></div>';});
+    if(tp.length){h+='<div style="font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;margin:12px 0 8px">By person</div>';tp.forEach(function(x){h+='<div class="rli"><span class="rlin">'+esc(x[0])+'</span><span style="font-weight:600">'+x[1]+' units</span></div>';});}
+    if(tr2.length){h+='<div style="font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;margin:12px 0 8px">By reason</div>';tr2.forEach(function(x){h+='<div class="rli"><span class="rlin">'+esc(x[0])+'</span><span style="font-weight:600">'+x[1]+' events</span></div>';});}
+    return h+'</div>';
+  }
+  var html='<div class="r2">'+rblock("This week: "+fd(wr[0].toISOString())+" - "+fd(wr[1].toISOString()),wt)+rblock("This month: "+fd(mr[0].toISOString())+" - "+fd(mr[1].toISOString()),mt)+'</div>';
+  if(ai.length){html+='<div class="card"><div class="ch"><div class="ctitle" style="color:var(--amber)">Stock alerts - '+ai.length+' items</div></div><div class="tw"><table><thead><tr><th>Item</th><th>Part No.</th><th>Type</th><th>Location</th><th>Stock</th><th>Initial</th></tr></thead><tbody>';ai.forEach(function(item){html+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'"><td>'+esc(item.name)+'</td><td><span class="pn">'+esc(item.pn)+'</span></td><td>'+(item.type?'<span class="tt tt'+item.type+'">'+item.type+'</span>':'---')+'</td><td><span class="loctag">'+esc(item.location)+'</span></td><td>'+scell(item)+'</td><td style="color:var(--tx2)">'+item.initialQty+'</td></tr>';});html+='</tbody></table></div></div>';}
+  if(xi.length){html+='<div class="card"><div class="ch"><div class="ctitle" style="color:var(--amber)">Expiry alerts - '+xi.length+' items</div></div><div class="tw"><table><thead><tr><th>Item</th><th>Part No.</th><th>Location</th><th>Expiry</th><th>Stock</th></tr></thead><tbody>';xi.forEach(function(item){html+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'"><td>'+esc(item.name)+'</td><td><span class="pn">'+esc(item.pn)+'</span></td><td><span class="loctag">'+esc(item.location)+'</span></td><td>'+ecell(item)+'</td><td>'+scell(item)+'</td></tr>';});html+='</tbody></table></div></div>';}
+  if(!ai.length&&!xi.length)html+='<div class="card"><div style="padding:24px;text-align:center;color:var(--green)">All items healthy - no alerts</div></div>';
+  return html;
+}
+
+// ── AUDIT PAGE ────────────────────────────────────────────────────────────────
+function renderAudit(){
+  var txs=S.tx.slice().reverse();
+  var rows=!txs.length?'<div class="empty">No transactions recorded.</div>':"";
+  txs.forEach(function(t){
+    var item=S.items.find(function(i){return i.id===t.itemId;});
+    rows+='<div class="ar"><span style="color:var(--tx2)">'+fd(t.date)+'</span>'+
+      '<span><span class="txd '+(t.type==="draw"?"txdd":"txdr")+'">'+(t.type==="draw"?"DRAW":"RECV")+'</span></span>'+
+      '<span><div style="font-weight:500">'+esc(item?item.name:t.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:'')+'</div></span>'+
+      '<span style="font-weight:600;color:'+(t.type==="draw"?"var(--red)":"var(--green)")+'">'+(t.type==="draw"?"-":"+")+t.qty+' <span style="color:var(--tx3);font-weight:400;font-size:11px">(rem:'+t.remaining+')</span></span>'+
+      '<span style="font-weight:500">'+esc(t.person)+'</span>'+
+      '<span style="color:var(--tx2);font-size:12px">'+(t.reasonCode?'<span style="background:var(--bg3);border:1px solid var(--bd);border-radius:4px;padding:1px 5px;font-size:10px;margin-right:4px">'+esc(t.reasonCode)+'</span>':'')+esc(t.purpose||'---')+'</span></div>';
+  });
+  return'<div class="card"><div class="ch"><div class="ctitle">Audit Log <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+txs.length+' entries</span></div>'+
+    '<button class="btn bg sm" id="btn-xtcsv">Export CSV</button></div>'+
+    '<div class="ah"><span>Date</span><span>Type</span><span>Item</span><span>Qty</span><span>Person</span><span>Reason &amp; Notes</span></div>'+rows+'</div>';
+}
+
+// ── TX MODAL ──────────────────────────────────────────────────────────────────
+var REASONS=["Maintenance","Repair","Testing","Calibration","Training","Damage","Loss","Return","Other"];
+
+function buildTxModal(id,type){
+  var item=S.items.find(function(i){return i.id===id;});
+  var isOut=type==="draw";
+  var rO='<option value="">-- select --</option>';
+  REASONS.forEach(function(r){rO+='<option value="'+r+'">'+r+'</option>';});
+  return'<div class="mh"><div class="mt" style="color:'+(isOut?"var(--red)":"var(--green)")+'">'+(isOut?"Draw from inventory":"Receive into inventory")+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div class="ibox">'+
+    '<div style="font-weight:500;margin-bottom:3px">'+esc(item.name)+'</div>'+
+    '<div style="font-size:12px;color:var(--tx2)">'+esc(item.pn)+(item.alt_pn?' - Alt: '+esc(item.alt_pn):'')+'</div>'+
+    '<div style="margin-top:8px">Stock: '+scell(item)+'</div></div>'+
+    '<div class="fg">'+
+    '<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="1"'+(isOut?' max="'+item.qty+'"':'')+' value="1" style="width:100%"></div>'+
+    '<div><label class="fl">Date *</label><input id="m-date" type="date" value="'+tod()+'" style="width:100%"></div>'+
+    '<div class="ff"><label class="fl">Person *</label><input id="m-person" type="text" placeholder="Full name" style="width:100%" value="'+(S.currentUser?esc(S.currentUser.name):'')+'"></div>'+
+    (isOut?'<div><label class="fl">Reason code *</label><select id="m-reason" style="width:100%">'+rO+'</select></div>':'')+
+    '<div class="'+(isOut?"":"ff")+'"><label class="fl">Notes</label><input id="m-purpose" type="text" style="width:100%"></div>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn '+(isOut?"br":"bg")+'" id="btn-submit-tx">Confirm</button></div>';
+}
+
+function buildItemModal(id){
+  var isEdit=!!id;
+  var item=isEdit?S.items.find(function(i){return i.id===id;}):{};
+  var locO="",subO="";
+  uniq("location").forEach(function(l){locO+='<option value="'+esc(l)+'">'+esc(l)+'</option>';});
+  uniq("subsys").forEach(function(s){subO+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
+  return'<div class="mh"><div class="mt">'+(isEdit?"Edit item":"Add new item")+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div class="fg">'+
+    '<div class="ff"><label class="fl">Description *</label><input id="m-name" type="text" value="'+esc(item.name||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Part number</label><input id="m-pn" type="text" value="'+esc(item.pn||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Alternative PN</label><input id="m-altpn" type="text" value="'+esc(item.alt_pn||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Sub-system</label><input id="m-subsys" type="text" value="'+esc(item.subsys||"")+'" list="subdl" style="width:100%"><datalist id="subdl">'+subO+'</datalist></div>'+
+    '<div><label class="fl">Type</label><select id="m-type" style="width:100%"><option value="">-- select --</option>'+
+    ['LRU','LRM','Consumable'].map(function(t){return'<option value="'+t+'"'+(isEdit&&item.type===t?" selected":"")+'>'+t+'</option>';}).join('')+
+    '</select></div>'+
+    '<div><label class="fl">SMR Code</label><input id="m-smr" type="text" value="'+esc(item.smr||"")+'" placeholder="e.g. PAOZZ" style="width:100%"></div>'+
+    '<div><label class="fl">Location *</label><input id="m-location" type="text" value="'+esc(item.location||"")+'" list="locdl" style="width:100%"><datalist id="locdl">'+locO+'</datalist></div>'+
+    '<div><label class="fl">Floor</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
+    (!isEdit?'<div><label class="fl">Initial quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div></div>')+
+    '<div class="ff"><label class="fl">Notes</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button>'+
+    '<button class="btn bp" id="btn-submit-item" data-id="'+esc(id||"")+'">'+(isEdit?"Save changes":"Add item")+'</button></div>';
+}
+
+// ── MODAL CONTROLLER ──────────────────────────────────────────────────────────
+function showModal(html, noClose) {
+  var el=document.getElementById("md");
+  el.innerHTML='<div class="ov" id="ov-bg"><div class="modal">'+html+'</div></div>';
+  if (!noClose) {
+    document.getElementById("ov-bg").addEventListener("click",function(ev){
+      if(ev.target.id==="ov-bg") closeModal();
+    });
+  }
+}
+function closeModal(){ document.getElementById("md").innerHTML=""; S.modal=null; }
+
+// ── SUBMIT ACTIONS ────────────────────────────────────────────────────────────
+function submitTx(){
+  var qty=parseInt(gv("m-qty"))||0, date=gv("m-date")||tod();
+  var person=gv("m-person").trim(), reason=gv("m-reason"), purpose=gv("m-purpose");
+  var isOut=S.modal.type==="draw";
+  if(!qty){alert("Please enter a valid quantity.");return;}
+  if(!person){alert("Please enter the person name.");return;}
+  if(isOut&&!reason){alert("Please select a reason code.");return;}
+  var item=S.items.find(function(i){return i.id===S.modal.id;});
+  if(isOut&&qty>item.qty){alert("Only "+item.qty+" unit(s) in stock.");return;}
+  item.qty=isOut?item.qty-qty:item.qty+qty;
+  S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose,reasonCode:reason||"",remaining:item.qty,ts:Date.now()});
+  save(); closeModal(); renderAll();
+}
+
+function submitItem(id){
+  var name=gv("m-name").trim(), loc=gv("m-location").trim();
+  if(!name){alert("Please enter a description.");return;}
+  if(!loc){alert("Please enter a location.");return;}
+  if(id){
+    var item=S.items.find(function(i){return i.id===id;});
+    item.pn=gv("m-pn")||"---"; item.alt_pn=gv("m-altpn"); item.name=name;
+    item.subsys=gv("m-subsys"); item.type=gv("m-type"); item.smr=gv("m-smr");
+    item.location=loc; item.floor=gv("m-floor"); item.expiry=gv("m-expiry"); item.notes=gv("m-notes");
+  } else {
+    var qty=parseInt(gv("m-qty"))||0;
+    S.items.push({id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),name:name,subsys:gv("m-subsys"),type:gv("m-type"),smr:gv("m-smr"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),notes:gv("m-notes"),qty:qty,initialQty:qty});
+  }
+  save(); closeModal(); renderAll();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function setTab(tab){
+  S.tab=tab;
+  ["inventory","log","reports","audit","map","users"].forEach(function(t){
+    var el=document.getElementById("ntab-"+t);
+    if(el) el.classList.toggle("on",t===tab);
+  });
+  renderPage();
+}
+
+function renderPage(){
+  var html="";
+  if(S.tab==="inventory") html=renderInventory();
+  else if(S.tab==="log") html=renderLog();
+  else if(S.tab==="reports") html=renderReports();
+  else if(S.tab==="audit") html=renderAudit();
+  else if(S.tab==="map") html=renderMap();
+  else if(S.tab==="users") html=renderUsers();
+  document.getElementById("pg").innerHTML=html;
+}
+function renderAll(){ renderStats(); renderPage(); }
+
+// ── GLOBAL EVENT LISTENERS ────────────────────────────────────────────────────
+document.addEventListener("click", function(ev){
+  var t=ev.target;
+
+  // --- stat strip clicks ---
+  var si=t.closest("[data-stat]");
+  if(si){
+    var sta=si.getAttribute("data-stat");
+    S.tab="inventory";
+    ["inventory","log","reports","audit","map","users"].forEach(function(tb){var el=document.getElementById("ntab-"+tb);if(el)el.classList.toggle("on",tb==="inventory");});
+    if(sta==="filter-low"){S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.search="";S._statFilter="low";}
+    else if(sta==="filter-zero"){S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.search="";S._statFilter="zero";}
+    else if(sta==="filter-exp"){S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.search="";S._statFilter="exp";}
+    renderPage();
+    return;
+  }
+
+  // --- tab buttons (by element id) ---
+  if(t.id==="ntab-inventory"||t.id==="ntab-log"||t.id==="ntab-reports"||t.id==="ntab-audit"||t.id==="ntab-map"||t.id==="ntab-users"){
+    setTab(t.id.replace("ntab-","")); return;
+  }
+
+  // --- role badge = logout ---
+  if(t.id==="role-badge"){ doLogout(); return; }
+
+  // --- static button IDs in inventory toolbar ---
+  if(t.id==="btn-clear"){S.search="";S.fLoc="";S.fSub="";S.fType="";S.fExp="";S._statFilter=null;renderPage();return;}
+  if(t.id==="btn-clearstatf"){S._statFilter=null;renderPage();return;}
+  if(t.id==="btn-xcsv"){xcsv();return;}
+  if(t.id==="btn-add"){if(!canEdit())return;S.modal={type:"add"};showModal(buildItemModal(null));return;}
+  if(t.id==="btn-xtcsv"){xtcsv();return;}
+  if(t.id==="btn-adduser"){if(!canAdmin())return;showModal(buildAddUserModal());return;}
+  if(t.id==="btn-saveuser"){doAddUser();return;}
+  if(t.id==="btn-login"){doLogin();return;}
+
+  // --- modal close buttons ---
+  if(t.id==="modal-close-btn"||t.id==="modal-close-btn2"){closeModal();return;}
+
+  // --- modal submit buttons ---
+  if(t.id==="btn-submit-tx"){submitTx();return;}
+  if(t.id==="btn-submit-item"){submitItem(t.getAttribute("data-id")||null);return;}
+
+  // --- detail modal action buttons ---
+  if(t.id==="btn-draw-item"){var did=t.getAttribute("data-id");closeModal();S.modal={type:"draw",id:did};showModal(buildTxModal(did,"draw"));return;}
+  if(t.id==="btn-recv-item"){var rid=t.getAttribute("data-id");closeModal();S.modal={type:"receive",id:rid};showModal(buildTxModal(rid,"receive"));return;}
+  if(t.id==="btn-edit-item"){var eid=t.getAttribute("data-id");closeModal();S.modal={type:"edit",id:eid};showModal(buildItemModal(eid));return;}
+  if(t.id==="btn-label-item"){showLabel(t.getAttribute("data-id"));return;}
+  if(t.id==="btn-print-label"){return;} // handled by onclick set in showLabel
+
+  // --- data-action elements (rows, draw/recv buttons in table) ---
+  var el=t.closest("[data-action]");
+  if(el){
+    var a=el.getAttribute("data-action"), id=el.getAttribute("data-id");
+    if(a==="detail"){
+      var item=S.items.find(function(i){return i.id===id;});
+      if(item){S.modal={type:"detail",id:id};showModal(detailHTML(item));}
+      return;
+    }
+    if(a==="draw"){if(!canEdit())return;S.modal={type:"draw",id:id};showModal(buildTxModal(id,"draw"));return;}
+    if(a==="receive"){if(!canEdit())return;S.modal={type:"receive",id:id};showModal(buildTxModal(id,"receive"));return;}
+    if(a==="delUser"){delUser(id);return;}
+    return;
+  }
+
+  // --- sort column headers ---
+  var th=t.closest("th[data-sort]");
+  if(th){byCol(th.getAttribute("data-sort"));return;}
+});
+
+document.addEventListener("change",function(ev){
+  var id=ev.target.id;
+  if(id==="fLoc"){S.fLoc=ev.target.value;renderPage();}
+  else if(id==="fSub"){S.fSub=ev.target.value;renderPage();}
+  else if(id==="fType"){S.fType=ev.target.value;renderPage();}
+  else if(id==="fExp"){S.fExp=ev.target.value;renderPage();}
+});
+
+document.addEventListener("input",function(ev){
+  if(ev.target.id==="srch"){S.search=ev.target.value;renderPage();}
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+load(); // load from localStorage first (instant)
+renderAll();
+updateRoleBadge();
+// Then pull live data from Google Sheets (if configured)
+if (syncStatus()) {
+  document.getElementById("sync-badge").style.display = "inline";
+  showSyncBadge("loading");
+  loadFromSheets(function(ok) {
+    if (ok) { renderAll(); }
+    startAutoSync();
+  });
+}
+showLogin();
+
+</script>
+</body>
+</html>
