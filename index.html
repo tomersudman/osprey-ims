@@ -217,10 +217,10 @@ function roleCls(r)  { return r==="admin"?"role-admin":r==="operator"?"role-oper
 
 // ── GOOGLE SHEETS BACKEND ────────────────────────────────────────────────────
 // Replace this with your deployed Google Apps Script URL
-var SCRIPT_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE";
+var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1wgZ3iFMvpJNA4iVk_cVsUFyYx5OEFFl9B1BWQts0OtVsryd-uGwtZD_g-HOHzqCwuA/exec";
 var SYNC_INTERVAL = null;
 
-function syncStatus() { return SCRIPT_URL !== "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE"; }
+function syncStatus() { return SCRIPT_URL !== "https://script.google.com/macros/s/AKfycbx1wgZ3iFMvpJNA4iVk_cVsUFyYx5OEFFl9B1BWQts0OtVsryd-uGwtZD_g-HOHzqCwuA/exec"; }
 
 function loadFromSheets(callback) {
   if (!syncStatus()) { if(callback) callback(false); return; }
