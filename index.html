@@ -186,7 +186,6 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
       <button class="nb on" id="ntab-inventory">Inventory</button>
       <button class="nb" id="ntab-log">Transaction Log</button>
       <button class="nb" id="ntab-reports">Reports</button>
-      <button class="nb" id="ntab-audit">Audit Log</button>
       <button class="nb" id="ntab-rma">RMA</button>
       <button class="nb" id="ntab-map">Location Map</button>
       <button class="nb" id="ntab-users">Users</button>
@@ -551,7 +550,14 @@ function renderQRIntoDOM() {
     wrap.appendChild(canvas);
   } else {
     // Fallback for new items not in map: show URL as text
-    wrap.innerHTML = '<div style="padding:12px;font-size:10px;color:#333;word-break:break-all;background:#fff;width:280px;text-align:center"><b>New item QR</b><br><br>'+text+'<br><br><small>Rescan after uploading to GitHub</small></div>';
+    var apiUrl="https://chart.googleapis.com/chart?chs=280x280&cht=qr&chl="+encodeURIComponent(text)+"&choe=UTF-8&chld=M|2";
+    var img=document.createElement("img");
+    img.width=280;img.height=280;
+    img.style.cssText="border:8px solid #fff;border-radius:4px;display:block;margin:0 auto";
+    img.onerror=function(){wrap.innerHTML='<div style="padding:12px;font-size:10px;color:#333;word-break:break-all;background:#fff;width:280px;text-align:center;border-radius:4px"><b>QR Code</b><br><br><span style="font-size:8px">'+esc(text)+'</span></div>';};
+    img.src=apiUrl;
+    wrap.innerHTML="";wrap.style.width="280px";wrap.style.height="280px";
+    wrap.appendChild(img);
   }
 }
 
@@ -816,8 +822,10 @@ function renderInventory(){
 
 // ── LOG PAGE ──────────────────────────────────────────────────────────────────
 function renderLog(){
-  var txs=S.tx.slice().reverse();
-  var rows=!txs.length?'<tr><td colspan="8" class="empty">No transactions yet.</td></tr>':"";
+  var allTxs=S.tx.slice().reverse();
+  var logQ=(S._logSearch||"").toLowerCase();
+  var txs=logQ?allTxs.filter(function(t){var item=S.items.find(function(i){return i.id===t.itemId;});return(item&&(item.name.toLowerCase().indexOf(logQ)>=0||item.pn.toLowerCase().indexOf(logQ)>=0))||t.person.toLowerCase().indexOf(logQ)>=0||(t.reasonCode||"").toLowerCase().indexOf(logQ)>=0||(t.purpose||"").toLowerCase().indexOf(logQ)>=0;}):allTxs;
+  var rows=!txs.length?'<tr><td colspan="8" class="empty">No transactions found.</td></tr>':"";
   txs.forEach(function(t){
     var item=S.items.find(function(i){return i.id===t.itemId;});
     rows+='<tr>'
@@ -831,7 +839,7 @@ function renderLog(){
       +'<td style="color:var(--tx2);font-size:12px">'+esc(t.purpose||'---')+'</td>'
       +'</tr>';
   });
-  return'<div class="card"><div class="ch"><div class="ctitle">Transaction Log <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+txs.length+' records</span></div>'+
+  return'<div class="card"><div class="ch"><div class="ctitle">Transaction Log <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+txs.length+' / '+allTxs.length+' records</span></div>'+'<div style="display:flex;gap:8px;align-items:center"><input id="log-srch" type="text" placeholder="Search..." value="'+esc(S._logSearch||'')+"'" + '" style="width:160px"><button class="btn bg sm" id="btn-xtcsv">Export CSV</button></div></div>'+
     '<button class="btn bg sm" id="btn-xtcsv">Export CSV</button></div>'+
     '<div class="tw"><table><thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Item</th><th>Qty</th><th>Remaining</th><th>Person</th><th>Purpose</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div></div>';
@@ -839,13 +847,18 @@ function renderLog(){
 
 // ── REPORTS PAGE ──────────────────────────────────────────────────────────────
 function renderReports(){
-  var wr=wk(),mr=mo();
-  var wt=S.tx.filter(function(t){return inr(t,wr);}),mt=S.tx.filter(function(t){return inr(t,mr);});
+  var today=tod();
+  var firstOfMonth=today.substring(0,7)+"-01";
+  var rFrom=S._rptFrom||firstOfMonth;
+  var rTo=S._rptTo||today;
+  var fromD=new Date(rFrom+"T00:00:00");
+  var toD=new Date(rTo+"T23:59:59");
+  var filteredTx=S.tx.filter(function(t){var d=new Date(t.date);return d>=fromD&&d<=toD;});
 
   // RMA summary
-  var rma_open=S.rma.filter(function(r){return r.status==="open";}).length;
-  var rma_ship=S.rma.filter(function(r){return r.status==="shipped";}).length;
-  var rma_recv=S.rma.filter(function(r){return r.status==="received";}).length;
+  var rma_open=(S.rma||[]).filter(function(r){return r.status==="open";}).length;
+  var rma_ship=(S.rma||[]).filter(function(r){return r.status==="shipped";}).length;
+  var rma_recv=(S.rma||[]).filter(function(r){return r.status==="received";}).length;
   var ai=S.items.filter(function(i){return["low","crit","zero"].indexOf(sst(i))>=0;});
   var xi=S.items.filter(function(i){var s=est(i);return s==="soon"||s==="gone";});
   function rblock(title,txs){
@@ -866,7 +879,7 @@ function renderReports(){
     if(tr2.length){h+='<div style="font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;margin:12px 0 8px">By reason</div>';tr2.forEach(function(x){h+='<div class="rli"><span class="rlin">'+esc(x[0])+'</span><span style="font-weight:600">'+x[1]+' events</span></div>';});}
     return h+'</div>';
   }
-  var html='<div class="r2">'+rblock("This week: "+fd(wr[0].toISOString())+" - "+fd(wr[1].toISOString()),wt)+rblock("This month: "+fd(mr[0].toISOString())+" - "+fd(mr[1].toISOString()),mt)+'</div>';
+  var html='<div class="card" style="margin-bottom:16px"><div class="ch"><div class="ctitle">Report Period</div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label style="font-size:12px;color:var(--tx2)">From</label><input type="date" id="rpt-from" value="'+rFrom+'" style="width:140px"><label style="font-size:12px;color:var(--tx2)">To</label><input type="date" id="rpt-to" value="'+rTo+'" style="width:140px"><button class="btn bp sm" id="btn-rpt-apply">Apply</button><button class="btn bg sm" id="btn-rpt-excel">&#11015; Excel</button><button class="btn sm" id="btn-rpt-word">&#11015; Word</button></div></div></div>'+rblock(fd(rFrom)+' to '+fd(rTo),filteredTx);
   if(ai.length){html+='<div class="card"><div class="ch"><div class="ctitle" style="color:var(--amber)">Stock alerts - '+ai.length+' items</div></div><div class="tw"><table><thead><tr><th>Item</th><th>Part No.</th><th>Type</th><th>Location</th><th>Stock</th><th>Initial</th></tr></thead><tbody>';ai.forEach(function(item){html+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'"><td>'+esc(item.name)+'</td><td><span class="pn">'+esc(item.pn)+'</span></td><td>'+(item.type?'<span class="tt tt'+item.type+'">'+item.type+'</span>':'---')+'</td><td><span class="loctag">'+esc(item.location)+'</span></td><td>'+scell(item)+'</td><td style="color:var(--tx2)">'+item.initialQty+'</td></tr>';});html+='</tbody></table></div></div>';}
   if(xi.length){html+='<div class="card"><div class="ch"><div class="ctitle" style="color:var(--amber)">Expiry alerts - '+xi.length+' items</div></div><div class="tw"><table><thead><tr><th>Item</th><th>Part No.</th><th>Location</th><th>Expiry</th><th>Stock</th></tr></thead><tbody>';xi.forEach(function(item){html+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'"><td>'+esc(item.name)+'</td><td><span class="pn">'+esc(item.pn)+'</span></td><td><span class="loctag">'+esc(item.location)+'</span></td><td>'+ecell(item)+'</td><td>'+scell(item)+'</td></tr>';});html+='</tbody></table></div></div>';}
   if(!ai.length&&!xi.length)html+='<div class="card"><div style="padding:24px;text-align:center;color:var(--green)">All items healthy - no alerts</div></div>';
@@ -995,9 +1008,75 @@ function submitItem(id){
 }
 
 
+
+// ── REPORT EXPORTS ────────────────────────────────────────────────────────────
+function exportRptExcel() {
+  var rFrom=S._rptFrom||tod().substring(0,7)+"-01";
+  var rTo=S._rptTo||tod();
+  var fromD=new Date(rFrom+"T00:00:00"),toD=new Date(rTo+"T23:59:59");
+  var txs=S.tx.filter(function(t){var d=new Date(t.date);return d>=fromD&&d<=toD;});
+  if(!txs.length){alert("No transactions in selected date range.");return;}
+  var hdr=["Date","Type","Reason","Item","Part No.","Qty","Remaining","Person","Purpose"];
+  var rows=txs.slice().reverse().map(function(t){
+    var item=S.items.find(function(i){return i.id===t.itemId;});
+    return [fdate(t.date),t.type,t.reasonCode||"",item?item.name:t.itemName,item?item.pn:"",t.qty,t.remaining,t.person,t.purpose||""];
+  });
+  var csv="﻿"+[hdr].concat(rows).map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(",");}).join("\n");
+  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download="Osprey_Report_"+rFrom+"_to_"+rTo+".csv";a.click();
+}
+
+function exportRptWord() {
+  var rFrom=S._rptFrom||tod().substring(0,7)+"-01";
+  var rTo=S._rptTo||tod();
+  var fromD=new Date(rFrom+"T00:00:00"),toD=new Date(rTo+"T23:59:59");
+  var txs=S.tx.filter(function(t){var d=new Date(t.date);return d>=fromD&&d<=toD;});
+  if(!txs.length){alert("No transactions in selected date range.");return;}
+  var draws=txs.filter(function(t){return t.type==="draw";});
+  var recvs=txs.filter(function(t){return t.type==="receive";});
+  var byItem={};
+  draws.forEach(function(t){
+    var n=S.items.find(function(i){return i.id===t.itemId;})||{name:t.itemName,pn:""};
+    var key=n.pn||n.name;
+    if(!byItem[key])byItem[key]={name:n.name,pn:n.pn||"",qty:0};
+    byItem[key].qty+=t.qty;
+  });
+  var sumRows="";
+  Object.values(byItem).sort(function(a,b){return b.qty-a.qty;}).forEach(function(x){
+    sumRows+="<tr><td>"+esc(x.pn)+"</td><td>"+esc(x.name)+"</td><td style='text-align:center'>"+x.qty+"</td></tr>";
+  });
+  var txRows="";
+  txs.slice().reverse().forEach(function(t){
+    var item=S.items.find(function(i){return i.id===t.itemId;});
+    txRows+="<tr><td>"+fdate(t.date)+"</td><td style='color:"+(t.type==="draw"?"#c00":"#090")+"'>"+(t.type==="draw"?"DRAW":"RECEIVE")+"</td><td>"+esc(item?item.name:t.itemName)+"</td><td>"+(t.type==="draw"?"-":"+")+t.qty+"</td><td>"+esc(t.person)+"</td><td>"+esc(t.reasonCode||"")+"</td><td>"+esc(t.purpose||"")+"</td></tr>";
+  });
+  var doc="<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>"+
+    "<head><meta charset='utf-8'><title>Report</title>"+
+    "<style>body{font-family:Arial,11pt}h1{color:#1f6feb;font-size:16pt}h2{font-size:12pt;color:#333;margin-top:18pt}"+
+    "table{border-collapse:collapse;width:100%}th{background:#1f6feb;color:#fff;padding:6pt;font-size:9pt}"+
+    "td{padding:4pt 6pt;border:1pt solid #ddd;font-size:9pt}tr:nth-child(even){background:#f5f5f5}"+
+    ".sum{margin:12pt 0}.sn{display:inline-block;background:#eee;padding:8pt 16pt;margin-right:8pt;text-align:center}"+
+    ".sn b{display:block;font-size:20pt;color:#1f6feb}</style></head><body>"+
+    "<h1>OSPREY IMS &mdash; Inventory Report</h1>"+
+    "<p><b>Period:</b> "+fdate(rFrom)+" &ndash; "+fdate(rTo)+" &nbsp;&nbsp; <b>Generated:</b> "+fdate(tod())+"</p>"+
+    "<div class='sum'>"+
+    "<span class='sn'><b>"+txs.length+"</b>Transactions</span>"+
+    "<span class='sn'><b style='color:#c00'>"+draws.length+"</b>Draws</span>"+
+    "<span class='sn'><b style='color:#090'>"+recvs.length+"</b>Receives</span></div>"+
+    "<h2>Items Drawn &mdash; Summary</h2>"+
+    "<table><tr><th>Part No.</th><th>Description</th><th>Total Qty</th></tr>"+sumRows+"</table>"+
+    "<h2>Full Transaction Log</h2>"+
+    "<table><tr><th>Date</th><th>Type</th><th>Item</th><th>Qty</th><th>Person</th><th>Reason</th><th>Notes</th></tr>"+txRows+"</table>"+
+    "</body></html>";
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["﻿"+doc],{type:"application/msword"}));
+  a.download="Osprey_Report_"+rFrom+"_to_"+rTo+".doc";a.click();
+}
+
 // ── RMA SYSTEM ────────────────────────────────────────────────────────────────
 function renderRMA() {
-  var open     = S.rma.filter(function(r){return r.status==="open";});
+  if(!S.rma)S.rma=[];
+  var open=S.rma.filter(function(r){return r.status==="open";});
   var shipped  = S.rma.filter(function(r){return r.status==="shipped";});
   var received = S.rma.filter(function(r){return r.status==="received";});
   var closed   = S.rma.filter(function(r){return r.status==="closed";});
@@ -1119,7 +1198,7 @@ function receiveRMA(id) {
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function setTab(tab){
   S.tab=tab;
-  ["inventory","log","reports","audit","rma","map","users"].forEach(function(t){
+  ["inventory","log","reports","rma","map","users"].forEach(function(t){
     var el=document.getElementById("ntab-"+t);
     if(el) el.classList.toggle("on",t===tab);
   });
@@ -1135,7 +1214,6 @@ function renderPage(){
   if(S.tab==="inventory") h=renderInventory();
   else if(S.tab==="log") h=renderLog();
   else if(S.tab==="reports") h=renderReports();
-  else if(S.tab==="audit") h=renderAudit();
   else if(S.tab==="rma") h=renderRMA();
   else if(S.tab==="map") h=renderMap();
   else if(S.tab==="users") h=renderUsers();
@@ -1168,7 +1246,7 @@ document.addEventListener("click", function(ev){
   }
 
   // --- tab buttons (by element id) ---
-  if(t.id==="ntab-inventory"||t.id==="ntab-log"||t.id==="ntab-reports"||t.id==="ntab-audit"||t.id==="ntab-rma"||t.id==="ntab-map"||t.id==="ntab-users"){
+  if(t.id==="ntab-inventory"||t.id==="ntab-log"||t.id==="ntab-reports"||t.id==="ntab-rma"||t.id==="ntab-map"||t.id==="ntab-users"){
     setTab(t.id.replace("ntab-","")); return;
   }
 
@@ -1252,7 +1330,20 @@ document.addEventListener("change",function(ev){
 });
 
 document.addEventListener("input",function(ev){
-  if(ev.target.id==="srch"){S.search=ev.target.value;S._searchFocused=true;renderPage();}
+  if(ev.target.id==="srch"){
+    S.search=ev.target.value;S._searchFocused=true;
+    var pos=ev.target.selectionStart;
+    renderPage();
+    var inp=document.getElementById("srch");
+    if(inp){inp.focus();try{inp.setSelectionRange(pos,pos);}catch(e){}}
+  }
+  if(ev.target.id==="log-srch"){
+    S._logSearch=ev.target.value;
+    var pos2=ev.target.selectionStart;
+    renderPage();
+    var inp2=document.getElementById("log-srch");
+    if(inp2){inp2.focus();try{inp2.setSelectionRange(pos2,pos2);}catch(e){}}
+  }
 });
 document.addEventListener("focusout",function(ev){
   if(ev.target.id==="srch") S._searchFocused=false;
