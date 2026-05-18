@@ -25,25 +25,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,system-ui,sans-serif;
 .nb:hover,.nb.on{background:var(--bg3);color:var(--tx)}
 .nb.on{font-weight:500}
 .main{padding:24px;max-width:1600px;margin:0 auto}
-/* ── STAT STRIP (magazine / UAS Manager style) ── */
-.stat-strip{
-  display:flex;align-items:stretch;
-  border-bottom:1px solid var(--bd);
-  margin-bottom:24px;
-  background:transparent;
-}
-.stat-item{
-  flex:1;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;
-  padding:20px 8px;text-align:center;
-  cursor:default;transition:background .12s;
-}
-.stat-item.clickable{cursor:pointer}
-.stat-item.clickable:hover{background:rgba(56,139,253,.06)}
-.stat-divider{width:1px;background:var(--bd);flex-shrink:0;margin:12px 0}
-.stat-label{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;white-space:nowrap}
-.stat-val{font-size:32px;font-weight:700;line-height:1}
-.stat-sub{font-size:11px;color:var(--tx3);margin-top:4px}
+/* stat strip removed */
 .card{background:var(--bg2);border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:16px}
 .ch{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--bd);flex-wrap:wrap;gap:10px}
 .ctitle{font-size:13px;font-weight:500}
@@ -205,6 +187,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
       <button class="nb" id="ntab-log">Transaction Log</button>
       <button class="nb" id="ntab-reports">Reports</button>
       <button class="nb" id="ntab-audit">Audit Log</button>
+      <button class="nb" id="ntab-rma">RMA</button>
       <button class="nb" id="ntab-map">Location Map</button>
       <button class="nb" id="ntab-users">Users</button>
     </nav>
@@ -229,10 +212,10 @@ var DEFAULT_USERS = [
 ];
 
 var S = {
-  items:[], tx:[], users:[], tab:"inventory",
+  items:[], tx:[], users:[], rma:[], tab:"inventory",
   search:"", fLoc:"", fSub:"", fType:"", fExp:"",
   sCol:"", sDir:1, modal:null,
-  currentUser: null, _statFilter: null
+  currentUser: null, _statFilter: null, _searchFocused: false
 };
 
 function canEdit()   { return S.currentUser && (S.currentUser.role === "admin" || S.currentUser.role === "operator"); }
@@ -256,6 +239,7 @@ function loadFromSheets(callback) {
       if (d.items && d.items.length) {
         S.items = d.items;
         S.tx    = d.tx    || [];
+        S.rma   = d.rma   || S.rma || [];
         if (d.users && d.users.length) S.users = d.users;
         S._syncState = "ok";
         showSyncBadge("ok");
@@ -300,7 +284,7 @@ function pushToSheets() {
   showSyncBadge("saving");
   fetch(SCRIPT_URL, {
     method:"POST", headers:{"Content-Type":"text/plain"},
-    body: JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users})
+    body: JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users, rma:S.rma})
   }).then(function(r){return r.json();})
     .then(function(d){ S._syncState=d.ok?"ok":"err"; showSyncBadge(d.ok?"ok":"err"); })
     .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
@@ -338,18 +322,18 @@ function load() {
       S.items = d.items || cp(SEED);
       S.tx    = d.tx    || [];
       S.users = d.users || cp(DEFAULT_USERS);
+      S.rma   = d.rma   || [];
     } else {
       S.items = cp(SEED);
       S.tx    = [];
       S.users = cp(DEFAULT_USERS);
+      S.rma   = [];
       save();
     }
   } catch(e) { S.items=cp(SEED); S.tx=[]; S.users=cp(DEFAULT_USERS); }
 }
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users})); } catch(e) {}
-  // Individual pushes happen via saveAndPushItem / saveAndPushTx
-  // pushToSheets() is only called manually from Users tab
+  try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users,rma:S.rma})); } catch(e) {}
 }
 
 // Save item locally + push just that item to Sheets
@@ -715,47 +699,8 @@ function delUser(id) {
 }
 
 // ── STATS ─────────────────────────────────────────────────────────────────────
-function renderStats() {
-  var a=S.items.filter(function(i){return["low","crit"].indexOf(sst(i))>=0;}).length;
-  var z=S.items.filter(function(i){return sst(i)==="zero";}).length;
-  var x=S.items.filter(function(i){var s=est(i);return s==="soon"||s==="gone";}).length;
-  var td=S.tx.filter(function(t){return new Date(t.date).toDateString()===new Date().toDateString();}).length;
-  var syncEl=syncStatus()?'<span id="sync-badge" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid;font-weight:600;margin-left:8px">Live</span>':'';
-  document.getElementById("sr").innerHTML=
-    '<div class="stat-strip">'+
-    si("Total items",S.items.length,"","",null)+
-    sdiv()+
-    si("Low / critical",a,a?"ca":"cg",a?' <span style="font-size:12px;opacity:.6">items</span>':""  ,"filter-low")+
-    sdiv()+
-    si("Out of stock",z,z?"cr":"cg","","filter-zero")+
-    sdiv()+
-    si("Expiring",x,x?"ca":"cg","","filter-exp")+
-    sdiv()+
-    si("Today txs",td,"cb","",null)+
-    sdiv()+
-    si("Total txs",S.tx.length,"","",null)+
-    '</div>';
-  // set sync badge color after render
-  if(syncStatus()) { setTimeout(function(){ showSyncBadge(S._syncState||"ok"); },10); }
-}
-function sdiv(){return'<div class="stat-divider"></div>';}
-function si(l,v,vcls,sub,action){
-  var cls=action?"stat-item clickable":"stat-item";
-  var da=action?' data-stat="'+action+'"':'';
-  return'<div class="'+cls+'"'+da+'>'+
-    '<div class="stat-label">'+l+'</div>'+
-    '<div class="stat-val '+vcls+'">'+v+'</div>'+
-    (sub?'<div class="stat-sub">'+sub+'</div>':'')+
-    '</div>';
-}
-function mk(l,v,c){return'<div class="stat-item"><div class="stat-label">'+l+'</div><div class="stat-val '+c+'">'+v+'</div></div>';}
+function renderStats(){ document.getElementById("sr").innerHTML=""; }
 
-// ── EXPORT ────────────────────────────────────────────────────────────────────
-function xcsv(){
-  var h=["ID","Part No.","Alt PN","Description","Sub-system","Type","SMR","Location","Floor","Stock","Initial","Expiry","Notes"];
-  var rows=filt().map(function(i){return[i.id,i.pn,i.alt_pn||"",i.name,i.subsys||"",i.type||"",i.smr||"",i.location,i.floor||"",i.qty,i.initialQty,i.expiry||"",i.notes||""].map(function(v){return'"'+String(v).replace(/"/g,'""')+'"';}).join(",");});
-  dl([h.join(",")].concat(rows).join("\n"),"Hermes_Inventory_"+tod()+".csv","text/csv");
-}
 function xtcsv(){
   var h=["Date","Type","Reason","Item","Part No.","Qty","Remaining","Person","Purpose"];
   var rows=S.tx.slice().reverse().map(function(t){var item=S.items.find(function(i){return i.id===t.itemId;});return[fd(t.date),t.type,t.reasonCode||"",item?item.name:t.itemName,item?item.pn:"",t.qty,t.remaining,t.person,t.purpose||""].map(function(v){return'"'+String(v).replace(/"/g,'""')+'"';}).join(",");});
@@ -832,10 +777,11 @@ function renderInventory(){
     rows+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'">'
       +'<td><span class="pn">'+hl(item.pn)+'</span></td>'
       +'<td><span class="apn">'+(item.alt_pn?hl(item.alt_pn):'---')+'</span></td>'
-      +'<td style="max-width:200px">'+hl(item.name)+'</td>'
-      +'<td style="font-size:12px;color:var(--tx2)">'+esc(item.subsys||'---')+'</td>'
-      +'<td>'+tt+'</td><td>'+sm+'</td><td>'+lc+'</td>'
-      +'<td>'+ecell(item)+'</td>'
+      +'<td style="max-width:180px">'+hl(item.name)+'</td>'
+      +'<td class="hide-sm"><span class="apn">'+(item.sn?esc(item.sn):'---')+'</span></td>'
+      +'<td class="hide-sm" style="font-size:12px;color:var(--tx2)">'+esc(item.subsys||'---')+'</td>'
+      +'<td class="hide-sm">'+tt+'</td><td class="hide-sm">'+sm+'</td><td>'+lc+'</td>'
+      +'<td class="hide-sm">'+ecell(item)+'</td>'
       +'<td>'+scell(item)+'</td>'
       +'<td>'
       +(canEdit()?'<div style="display:flex;gap:4px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'">Draw</button><button class="btn sm bg" data-action="receive" data-id="'+esc(item.id)+'">Recv</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')
@@ -858,6 +804,7 @@ function renderInventory(){
     '<th data-sort="pn" class="'+thc("pn")+'">Part No.</th>'+
     '<th class="hide-sm">Alt PN</th>'+
     '<th data-sort="name" class="'+thc("name")+'">Description</th>'+
+    '<th data-sort="sn" class="'+thc("sn")+' hide-sm">S/N</th>'+
     '<th data-sort="subsys" class="'+thc("subsys")+' hide-sm">Sub-sys</th>'+
     '<th data-sort="type" class="'+thc("type")+' hide-sm">Type</th>'+
     '<th data-sort="smr" class="'+thc("smr")+' hide-sm">SMR</th>'+
@@ -894,6 +841,11 @@ function renderLog(){
 function renderReports(){
   var wr=wk(),mr=mo();
   var wt=S.tx.filter(function(t){return inr(t,wr);}),mt=S.tx.filter(function(t){return inr(t,mr);});
+
+  // RMA summary
+  var rma_open=S.rma.filter(function(r){return r.status==="open";}).length;
+  var rma_ship=S.rma.filter(function(r){return r.status==="shipped";}).length;
+  var rma_recv=S.rma.filter(function(r){return r.status==="received";}).length;
   var ai=S.items.filter(function(i){return["low","crit","zero"].indexOf(sst(i))>=0;});
   var xi=S.items.filter(function(i){var s=est(i);return s==="soon"||s==="gone";});
   function rblock(title,txs){
@@ -978,6 +930,7 @@ function buildItemModal(id){
     ['LRU','LRM','Consumable'].map(function(t){return'<option value="'+t+'"'+(isEdit&&item.type===t?" selected":"")+'>'+t+'</option>';}).join('')+
     '</select></div>'+
     '<div><label class="fl">SMR Code</label><input id="m-smr" type="text" value="'+esc(item.smr||"")+'" placeholder="e.g. PAOZZ" style="width:100%"></div>'+
+    '<div><label class="fl">Serial Number (S/N)</label><input id="m-sn" type="text" value="'+esc(item.sn||"")+'" placeholder="e.g. SN-001234" style="width:100%"></div>'+
     '<div><label class="fl">Location *</label><input id="m-location" type="text" value="'+esc(item.location||"")+'" list="locdl" style="width:100%"><datalist id="locdl">'+locO+'</datalist></div>'+
     '<div><label class="fl">Floor</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
@@ -1022,22 +975,151 @@ function submitItem(id){
   var name=gv("m-name").trim(), loc=gv("m-location").trim();
   if(!name){alert("Please enter a description.");return;}
   if(!loc){alert("Please enter a location.");return;}
+  var item;
   if(id){
-    var item=S.items.find(function(i){return i.id===id;});
+    item=S.items.find(function(i){return i.id===id;});
     item.pn=gv("m-pn")||"---"; item.alt_pn=gv("m-altpn"); item.name=name;
     item.subsys=gv("m-subsys"); item.type=gv("m-type"); item.smr=gv("m-smr");
-    item.location=loc; item.floor=gv("m-floor"); item.expiry=gv("m-expiry"); item.notes=gv("m-notes");
+    item.sn=gv("m-sn"); item.location=loc; item.floor=gv("m-floor");
+    item.expiry=gv("m-expiry"); item.notes=gv("m-notes");
   } else {
     var qty=parseInt(gv("m-qty"))||0;
-    S.items.push({id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),name:name,subsys:gv("m-subsys"),type:gv("m-type"),smr:gv("m-smr"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),notes:gv("m-notes"),qty:qty,initialQty:qty});
+    item={id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
+      name:name,subsys:gv("m-subsys"),type:gv("m-type"),smr:gv("m-smr"),
+      sn:gv("m-sn"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),
+      notes:gv("m-notes"),qty:qty,initialQty:qty};
+    S.items.push(item);
   }
-  save(); closeModal(); renderAll();
+  saveAndPushItem(item);
+  closeModal(); renderAll();
+}
+
+
+// ── RMA SYSTEM ────────────────────────────────────────────────────────────────
+function renderRMA() {
+  var open     = S.rma.filter(function(r){return r.status==="open";});
+  var shipped  = S.rma.filter(function(r){return r.status==="shipped";});
+  var received = S.rma.filter(function(r){return r.status==="received";});
+  var closed   = S.rma.filter(function(r){return r.status==="closed";});
+
+  function rmaTable(title, list, showActions) {
+    if (!list.length) return "";
+    var rows="";
+    list.forEach(function(r){
+      var item=S.items.find(function(i){return i.id===r.itemId;});
+      var statusCls="rma-"+r.status;
+      rows+='<tr>'
+        +'<td><span class="pn">'+esc(r.rmaNum)+'</span></td>'
+        +'<td><div>'+esc(item?item.name:r.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:r.itemPn)+'</div></td>'
+        +'<td><span class="smrc">'+esc(r.sn||"---")+'</span></td>'
+        +'<td style="font-size:12px;color:var(--tx2)">'+esc(r.fault)+'</td>'
+        +'<td><span class="rma-status '+statusCls+'">'+r.status.toUpperCase()+'</span></td>'
+        +'<td style="font-size:12px;color:var(--tx2)">'+fdate(r.dateOpened)+'</td>'
+        +'<td style="font-size:12px;color:var(--tx2)">'+(r.dateShipped?fdate(r.dateShipped):"---")+'</td>'
+        +'<td style="font-size:12px;color:var(--tx2)">'+(r.dateReceived?fdate(r.dateReceived):"---")+'</td>'
+        +'<td style="font-size:12px;color:var(--tx2)">'+esc(r.snReceived||r.sn||"---")+'</td>'
+        +'<td style="font-size:12px;color:var(--tx2)">'+esc(r.notes||"---")+'</td>'
+        +'<td>'+( showActions && r.status==="open" && canEdit() ? '<button class="btn sm bpu" id="btn-rma-ship" data-id="'+esc(r.id)+'">Ship</button>' : "")
+               +( showActions && r.status==="shipped" && canEdit() ? '<button class="btn sm bg" id="btn-rma-receive" data-id="'+esc(r.id)+'">Receive back</button>' : "")
+        +'</td>'
+        +'</tr>';
+    });
+    return '<div style="margin-bottom:4px;font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;padding:10px 18px 4px">'+title+' ('+list.length+')</div>'
+      +'<div class="tbl-wrap"><table><thead><tr>'
+      +'<th>RMA #</th><th>Item</th><th>S/N Out</th><th>Fault Description</th><th>Status</th>'
+      +'<th>Opened</th><th>Shipped</th><th>Received</th><th>S/N In</th><th>Notes</th><th>Action</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+
+  return '<div class="card"><div class="ch">'
+    +'<div class="ctitle">RMA — Items for Repair <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+S.rma.length+' total</span></div>'
+    +(canEdit()?'<button class="btn bp" id="btn-rma-open">+ Open RMA</button>':'')+
+    '</div>'
+    +rmaTable("Awaiting shipment", open, true)
+    +rmaTable("Shipped to Israel", shipped, true)
+    +rmaTable("Received back", received, false)
+    +rmaTable("Closed", closed, false)
+    +(!S.rma.length?'<div class="empty">No RMA records yet.</div>':"")+
+    "</div>";
+}
+
+function openRMAModal(prefillItemId) {
+  var itemOpts="<option value=''>-- select item --</option>";
+  S.items.filter(function(i){return i.type==="LRU"||i.type==="LRM";}).forEach(function(i){
+    itemOpts+='<option value="'+esc(i.id)+'"'+(prefillItemId===i.id?" selected":"")+'>'+esc(i.pn)+" - "+esc(i.name)+"</option>";
+  });
+  showModal(
+    '<div class="mh"><div class="mt">Open RMA</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div class="fg">'+
+    '<div class="ff"><label class="fl">Item *</label><select id="rma-item" style="width:100%">'+itemOpts+'</select></div>'+
+    '<div><label class="fl">Serial Number (S/N) *</label><input id="rma-sn" type="text" placeholder="S/N being sent for repair" style="width:100%"></div>'+
+    '<div><label class="fl">Date opened</label><input id="rma-date" type="date" value="'+tod()+'" style="width:100%"></div>'+
+    '<div class="ff"><label class="fl">Fault description *</label><input id="rma-fault" type="text" placeholder="Describe the fault/reason for RMA" style="width:100%"></div>'+
+    '<div class="ff"><label class="fl">Notes</label><input id="rma-notes" type="text" placeholder="Any additional notes" style="width:100%"></div>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn bp" id="btn-rma-submit">Open RMA</button></div>'
+  );
+}
+
+function submitRMA() {
+  var itemId=gv("rma-item"), sn=gv("rma-sn").trim(), fault=gv("rma-fault").trim();
+  if(!itemId){alert("Please select an item.");return;}
+  if(!sn){alert("Please enter the serial number.");return;}
+  if(!fault){alert("Please describe the fault.");return;}
+  var item=S.items.find(function(i){return i.id===itemId;});
+  var num="RMA-"+String(Date.now()).slice(-6);
+  var rec={id:String(Date.now()),rmaNum:num,itemId:itemId,itemName:item.name,itemPn:item.pn,
+    sn:sn,fault:fault,status:"open",dateOpened:gv("rma-date")||tod(),
+    dateShipped:"",dateReceived:"",snReceived:"",notes:gv("rma-notes")};
+  S.rma.push(rec);
+  save();
+  closeModal();
+  S.tab="rma";
+  document.querySelectorAll(".nb").forEach(function(b){b.classList.toggle("on",b.id==="ntab-rma");});
+  renderAll();
+  alert("RMA "+num+" opened successfully.");
+}
+
+function shipRMA(id) {
+  var rec=S.rma.find(function(r){return r.id===id;});
+  if(!rec)return;
+  var date=prompt("Enter ship date (YYYY-MM-DD):",tod());
+  if(!date)return;
+  rec.status="shipped"; rec.dateShipped=date;
+  save(); renderAll();
+}
+
+function receiveRMA(id) {
+  var rec=S.rma.find(function(r){return r.id===id;});
+  if(!rec)return;
+  var snIn=prompt("Enter received S/N (leave blank if same as sent: "+rec.sn+"):",rec.sn);
+  if(snIn===null)return;
+  var date=prompt("Enter receive date (YYYY-MM-DD):",tod());
+  if(!date)return;
+  rec.status="received";
+  rec.dateReceived=date;
+  rec.snReceived=snIn||rec.sn;
+  // Add the item back to inventory
+  var item=S.items.find(function(i){return i.id===rec.itemId;});
+  if(item){
+    item.qty+=1;
+    if(snIn && snIn!==rec.sn) item.sn=snIn; // update SN if different
+    saveAndPushItem(item);
+  }
+  var newTx={id:String(Date.now()),itemId:rec.itemId,itemName:rec.itemName,
+    type:"receive",qty:1,date:date,person:S.currentUser?S.currentUser.name:"RMA",
+    purpose:"RMA return - "+rec.rmaNum+(snIn!==rec.sn?" (new S/N: "+snIn+")":""),
+    reasonCode:"Return",remaining:item?item.qty:0,ts:Date.now()};
+  S.tx.push(newTx);
+  saveAndPushTx(newTx);
+  save(); renderAll();
+  alert("RMA "+rec.rmaNum+" received back. Item returned to inventory.");
 }
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function setTab(tab){
   S.tab=tab;
-  ["inventory","log","reports","audit","map","users"].forEach(function(t){
+  ["inventory","log","reports","audit","rma","map","users"].forEach(function(t){
     var el=document.getElementById("ntab-"+t);
     if(el) el.classList.toggle("on",t===tab);
   });
@@ -1045,14 +1127,26 @@ function setTab(tab){
 }
 
 function renderPage(){
-  var html="";
-  if(S.tab==="inventory") html=renderInventory();
-  else if(S.tab==="log") html=renderLog();
-  else if(S.tab==="reports") html=renderReports();
-  else if(S.tab==="audit") html=renderAudit();
-  else if(S.tab==="map") html=renderMap();
-  else if(S.tab==="users") html=renderUsers();
-  document.getElementById("pg").innerHTML=html;
+  var scrollY=window.scrollY;
+  var srchVal=S.search, srchPos=0;
+  var oldSrch=document.getElementById("srch");
+  if(oldSrch) srchPos=oldSrch.selectionStart||srchVal.length;
+  var h="";
+  if(S.tab==="inventory") h=renderInventory();
+  else if(S.tab==="log") h=renderLog();
+  else if(S.tab==="reports") h=renderReports();
+  else if(S.tab==="audit") h=renderAudit();
+  else if(S.tab==="rma") h=renderRMA();
+  else if(S.tab==="map") h=renderMap();
+  else if(S.tab==="users") h=renderUsers();
+  document.getElementById("pg").innerHTML=h;
+  window.scrollTo(0,scrollY);
+  if(S.tab==="inventory"){
+    var inp=document.getElementById("srch");
+    if(inp&&document.activeElement!==inp&&S._searchFocused){
+      inp.focus(); inp.setSelectionRange(srchPos,srchPos);
+    }
+  }
 }
 function renderAll(){ renderStats(); renderPage(); }
 
@@ -1074,7 +1168,7 @@ document.addEventListener("click", function(ev){
   }
 
   // --- tab buttons (by element id) ---
-  if(t.id==="ntab-inventory"||t.id==="ntab-log"||t.id==="ntab-reports"||t.id==="ntab-audit"||t.id==="ntab-map"||t.id==="ntab-users"){
+  if(t.id==="ntab-inventory"||t.id==="ntab-log"||t.id==="ntab-reports"||t.id==="ntab-audit"||t.id==="ntab-rma"||t.id==="ntab-map"||t.id==="ntab-users"){
     setTab(t.id.replace("ntab-","")); return;
   }
 
@@ -1088,6 +1182,10 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-add"){if(!canEdit())return;S.modal={type:"add"};showModal(buildItemModal(null));return;}
   if(t.id==="btn-xtcsv"){xtcsv();return;}
   if(t.id==="btn-adduser"){if(!canAdmin())return;showModal(buildAddUserModal());return;}
+  if(t.id==="btn-rma-open"){if(!canEdit())return;openRMAModal(null);return;}
+  if(t.id==="btn-rma-submit"){submitRMA();return;}
+  if(t.id==="btn-rma-ship"){shipRMA(t.getAttribute("data-id"));return;}
+  if(t.id==="btn-rma-receive"){receiveRMA(t.getAttribute("data-id"));return;}
   if(t.id==="btn-pushall"){if(!canAdmin())return;if(confirm("Push ALL current data to Google Sheets? This will overwrite the sheet with your current data."))pushToSheets();return;}
   if(t.id==="btn-saveuser"){doAddUser();return;}
   if(t.id==="btn-login"){doLogin();return;}
@@ -1154,7 +1252,10 @@ document.addEventListener("change",function(ev){
 });
 
 document.addEventListener("input",function(ev){
-  if(ev.target.id==="srch"){S.search=ev.target.value;renderPage();}
+  if(ev.target.id==="srch"){S.search=ev.target.value;S._searchFocused=true;renderPage();}
+});
+document.addEventListener("focusout",function(ev){
+  if(ev.target.id==="srch") S._searchFocused=false;
 });
 document.addEventListener("keydown",function(ev){
   if(ev.key==="Enter"&&ev.target.id==="login-pin"){doLogin();}
