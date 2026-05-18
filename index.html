@@ -239,18 +239,38 @@ function loadFromSheets(callback) {
     .catch(function(){ showSyncBadge("err"); if(callback) callback(false); });
 }
 
+// Push a single item update to Sheets (upsert)
+function pushItem(item) {
+  if (!syncStatus()) return;
+  fetch(SCRIPT_URL, {
+    method:"POST", headers:{"Content-Type":"text/plain"},
+    body: JSON.stringify({action:"saveItem", item:item})
+  }).then(function(r){return r.json();})
+    .then(function(d){ S._syncState="ok"; showSyncBadge("ok"); })
+    .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
+}
+
+// Push a single new transaction to Sheets (append)
+function pushTx(tx) {
+  if (!syncStatus()) return;
+  fetch(SCRIPT_URL, {
+    method:"POST", headers:{"Content-Type":"text/plain"},
+    body: JSON.stringify({action:"saveTx", tx:tx})
+  }).then(function(r){return r.json();})
+    .then(function(d){ S._syncState="ok"; showSyncBadge("ok"); })
+    .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
+}
+
+// Full overwrite — only used for initial data seed from Users tab
 function pushToSheets() {
   if (!syncStatus()) return;
   showSyncBadge("saving");
-  var payload = JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users});
   fetch(SCRIPT_URL, {
-    method:"POST",
-    headers:{"Content-Type":"text/plain"},
-    body: payload
-  })
-  .then(function(r){return r.json();})
-  .then(function(d){ showSyncBadge(d.ok?"ok":"err"); })
-  .catch(function(){ showSyncBadge("err"); });
+    method:"POST", headers:{"Content-Type":"text/plain"},
+    body: JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users})
+  }).then(function(r){return r.json();})
+    .then(function(d){ S._syncState=d.ok?"ok":"err"; showSyncBadge(d.ok?"ok":"err"); })
+    .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
 }
 
 function showSyncBadge(state) {
@@ -295,7 +315,22 @@ function load() {
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users})); } catch(e) {}
-  pushToSheets();
+  // Individual pushes happen via saveAndPushItem / saveAndPushTx
+  // pushToSheets() is only called manually from Users tab
+}
+
+// Save item locally + push just that item to Sheets
+function saveAndPushItem(item) {
+  save();
+  showSyncBadge("saving");
+  pushItem(item);
+}
+
+// Save tx locally + push just that tx to Sheets
+function saveAndPushTx(tx) {
+  save();
+  showSyncBadge("saving");
+  pushTx(tx);
 }
 function cp(x)  { return JSON.parse(JSON.stringify(x)); }
 function gv(id) { var el=document.getElementById(id); return el?el.value:""; }
@@ -544,6 +579,7 @@ function renderUsers() {
   return'<div class="card"><div class="ch"><div class="ctitle">User Management</div>'+
     '<div style="display:flex;gap:8px;align-items:center">'+
     (syncStatus()?'<span style="font-size:11px;color:var(--tx2)">Google Sheets: <b style="color:var(--green)">Connected</b></span>':'<span style="font-size:11px;color:var(--tx3)">Google Sheets: <b style="color:var(--red)">Not configured</b></span>')+
+    (syncStatus()?'<button class="btn sm" id="btn-pushall" style="border-color:var(--blue2);color:var(--blue2)">Push all data to Sheets</button>':'')+
     '<button class="btn bp sm" id="btn-adduser">+ Add user</button></div></div>'+
     '<div style="padding:16px 18px">'+rows+'</div></div>';
 }
@@ -563,7 +599,9 @@ function doAddUser() {
   if(!name){alert("Enter a name.");return;}
   if(!pin||pin.length<4){alert("PIN must be at least 4 digits.");return;}
   S.users.push({id:String(Date.now()),name:name,pin:pin,role:role});
-  save(); closeModal(); renderAll();
+  save();
+  if(syncStatus()){showSyncBadge("saving");fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveUsers",users:S.users})}).then(function(r){return r.json();}).then(function(){showSyncBadge("ok");}).catch(function(){showSyncBadge("err");});}
+  closeModal(); renderAll();
 }
 
 function delUser(id) {
@@ -868,8 +906,11 @@ function submitTx(){
   var item=S.items.find(function(i){return i.id===S.modal.id;});
   if(isOut&&qty>item.qty){alert("Only "+item.qty+" unit(s) in stock.");return;}
   item.qty=isOut?item.qty-qty:item.qty+qty;
-  S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose,reasonCode:reason||"",remaining:item.qty,ts:Date.now()});
-  save(); closeModal(); renderAll();
+  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose,reasonCode:reason||"",remaining:item.qty,ts:Date.now()};
+  S.tx.push(newTx);
+  saveAndPushTx(newTx);
+  pushItem(item); // also update item qty in sheet
+  closeModal(); renderAll();
 }
 
 function submitItem(id){
@@ -942,6 +983,7 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-add"){if(!canEdit())return;S.modal={type:"add"};showModal(buildItemModal(null));return;}
   if(t.id==="btn-xtcsv"){xtcsv();return;}
   if(t.id==="btn-adduser"){if(!canAdmin())return;showModal(buildAddUserModal());return;}
+  if(t.id==="btn-pushall"){if(!canAdmin())return;if(confirm("Push ALL current data to Google Sheets? This will overwrite the sheet with your current data."))pushToSheets();return;}
   if(t.id==="btn-saveuser"){doAddUser();return;}
   if(t.id==="btn-login"){doLogin();return;}
 
