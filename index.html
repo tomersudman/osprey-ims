@@ -168,6 +168,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   .ah > *:nth-child(n+5),.ar > *:nth-child(n+5){display:none}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 <div class="topbar">
@@ -485,34 +486,25 @@ function updateRoleBadge() {
 
 // ── QR GENERATOR ─────────────────────────────────────────────────────────────
 function makeQR(text) {
-  // Simple QR-like visual using a deterministic grid pattern based on text hash
-  // This creates a visual barcode-style label (not a real scannable QR but visually clear)
-  var size = 21;
-  var hash = 0;
-  for (var i=0; i<text.length; i++) { hash = ((hash<<5)-hash)+text.charCodeAt(i); hash|=0; }
-  var cells = [];
-  for (var r=0; r<size; r++) {
-    cells[r]=[];
-    for (var c2=0; c2<size; c2++) {
-      // finder patterns (corners)
-      var inFinder = (r<7&&c2<7)||(r<7&&c2>13)||(r>13&&c2<7);
-      if (inFinder) { cells[r][c2]=(r===0||r===6||c2===0||c2===6||(r>=2&&r<=4&&c2>=2&&c2<=4))?1:0; }
-      else { var v=(hash^(r*size+c2)*2654435761)&1; cells[r][c2]=v; }
-    }
-  }
-  var cellSize=8;
-  var svgSize=size*cellSize+20;
-  var svg='<svg width="'+svgSize+'" height="'+svgSize+'" xmlns="http://www.w3.org/2000/svg" style="border:1px solid #ccc;background:#fff">';
-  svg+='<rect width="'+svgSize+'" height="'+svgSize+'" fill="white"/>';
-  for (var r2=0; r2<size; r2++) {
-    for (var c3=0; c3<size; c3++) {
-      if (cells[r2][c3]) {
-        svg+='<rect x="'+(c3*cellSize+10)+'" y="'+(r2*cellSize+10)+'" width="'+cellSize+'" height="'+cellSize+'" fill="black"/>';
-      }
-    }
-  }
-  svg+='</svg>';
-  return svg;
+  // Generate a real scannable QR code using qrcodejs library
+  var container = document.createElement("div");
+  try {
+    new QRCode(container, {
+      text: text,
+      width: 180,
+      height: 180,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    // qrcodejs creates a canvas or img inside container
+    var img = container.querySelector("img");
+    var canvas = container.querySelector("canvas");
+    if (img) return '<img src="'+img.src+'" width="180" height="180" style="border:8px solid #fff;border-radius:4px">';
+    if (canvas) return '<img src="'+canvas.toDataURL()+'" width="180" height="180" style="border:8px solid #fff;border-radius:4px">';
+  } catch(e) {}
+  // Fallback if library not loaded
+  return '<div style="width:180px;height:180px;background:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;text-align:center;padding:10px">QR unavailable<br>'+text+'</div>';
 }
 
 function showLabel(id) {
@@ -526,7 +518,7 @@ function showLabel(id) {
     '<div class="mh"><div><div class="mt">Label & QR Code</div><div style="font-size:12px;color:var(--tx2);margin-top:3px">'+esc(item.pn)+'</div></div>'+
     '<button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb"><div class="qr-box">'+
-    '<div class="qr-svg">'+qr+'</div>'+
+    '<div class="qr-svg" style="text-align:center;margin:12px 0">'+qr+'</div>'+
     '<div style="font-size:18px;font-weight:700;margin:10px 0 4px">'+esc(item.pn)+'</div>'+
     '<div style="font-size:13px;color:var(--tx2);margin-bottom:6px">'+esc(item.name)+'</div>'+
     '<div style="font-size:12px;color:var(--tx3)">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Floor '+item.floor:'')+'</div>'+
@@ -540,22 +532,31 @@ function showLabel(id) {
   S._labelQR   = qr;
 }
 
-function doPrintLabel(item,qrSVG) {
-  var w=window.open("","_blank","width=440,height=580");
-  w.document.write('<!DOCTYPE html><html><head><title>Label - '+esc(item.pn)+'</title>'+
-    '<style>body{font-family:monospace;padding:24px;background:#fff;color:#000;text-align:center}'+
-    '.box{border:2px solid #000;padding:20px;max-width:360px;margin:0 auto}'+
-    '.pn{font-size:20px;font-weight:bold;margin:8px 0;word-break:break-all}'+
-    '.nm{font-size:12px;margin-bottom:8px}.meta{font-size:11px;color:#555;margin-top:4px}'+
-    '@media print{.np{display:none}}</style></head><body>'+
-    '<div class="box"><div style="font-size:10px;letter-spacing:2px">HERMES IMS</div>'+
-    qrSVG.replace(/style="[^"]*"/,'style="margin:10px auto;display:block"')+
+function doPrintLabel(item, qrHTML) {
+  var w = window.open("","_blank","width=440,height=600");
+  w.document.write(
+    '<!DOCTYPE html><html><head><title>Label - '+esc(item.pn)+'</title>'+
+    '<style>'+
+    'body{font-family:Arial,sans-serif;padding:24px;background:#fff;color:#000;text-align:center}'+
+    '.box{border:3px solid #000;padding:20px;max-width:320px;margin:0 auto;border-radius:4px}'+
+    '.org{font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px;color:#555}'+
+    '.pn{font-size:22px;font-weight:bold;margin:6px 0;word-break:break-all;font-family:monospace}'+
+    '.nm{font-size:12px;color:#333;margin-bottom:4px}'+
+    '.meta{font-size:11px;color:#777;margin-top:3px}'+
+    '.qr{margin:12px auto}'+
+    '@media print{.np{display:none}button{display:none}}'+
+    '</style></head><body>'+
+    '<div class="box">'+
+    '<div class="org">OSPREY IMS</div>'+
+    '<div class="qr">'+qrHTML+'</div>'+
     '<div class="pn">'+esc(item.pn)+'</div>'+
     '<div class="nm">'+esc(item.name)+'</div>'+
-    '<div class="meta">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Fl '+item.floor:'')+'</div>'+
-    (item.type?'<div class="meta">'+esc(item.type)+(item.smr?' / SMR: '+esc(item.smr):'')+'</div>':'')+'</div>'+
-    '<br><button class="np" onclick="window.print()">Print</button>'+
-    '</body></html>');
+    '<div class="meta">'+esc(item.location)+(item.floor&&item.floor!=="0"?' &middot; Floor '+item.floor:'')+'</div>'+
+    (item.type?'<div class="meta">'+esc(item.type)+(item.smr?' &middot; SMR: '+esc(item.smr):'')+'</div>':'')+
+    '</div>'+
+    '<br><button class="np" onclick="window.print()" style="padding:8px 20px;font-size:14px;cursor:pointer">&#128424; Print</button>'+
+    '</body></html>'
+  );
   w.document.close();
 }
 
