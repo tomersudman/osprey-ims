@@ -97,38 +97,73 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
 ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
 /* ── Mobile ── */
 @media(max-width:768px){
-  .topbar{height:auto;flex-wrap:wrap;padding:6px 10px;gap:6px}
-  .brand{padding-left:0 !important}
-  .brand img{height:36px !important}
-  .brand div div:first-child{font-size:18px !important}
-  .brand div div:last-child{display:none}
-  .ntabs{flex:1 1 100%;order:2;overflow-x:auto;justify-content:flex-start;padding:0;gap:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .ntabs::-webkit-scrollbar{display:none}
-  .nb{padding:7px 12px;font-size:14px;white-space:nowrap;flex-shrink:0}
-  .main{padding:8px 10px}
-  .card{border-radius:10px;margin-bottom:10px}
-  .ch{padding:10px 12px;gap:6px}
-  .ctitle{font-size:13px}
-  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  table{min-width:0;font-size:12px}
-  .hide-sm{display:none}
+  /* Hide top nav tabs, use bottom bar instead */
+  .ntabs{display:none !important}
+  .topbar{height:auto;padding:10px 14px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;align-items:center}
+  .brand{padding-left:0 !important;gap:10px}
+  .brand img{height:38px !important}
+  .brand div div:first-child{font-size:19px !important}
+  .brand div div:last-child{font-size:9px !important}
+  #welcome-block{display:block !important}
+  #welcome-name{font-size:11px !important}
+  #welcome-role{font-size:9px !important}
+  .main{padding:10px 12px 84px}  /* bottom padding for tab bar */
+  .card{border-radius:14px;margin-bottom:12px;border:1px solid var(--bd)}
+  .ch{padding:12px 14px;gap:8px;flex-wrap:wrap}
+  .ctitle{font-size:14px;font-weight:600}
+  /* Hide the table on mobile, show cards */
+  .tw-table{display:none !important}
+  .mcards-wrap{display:flex;flex-direction:column;gap:10px;padding:12px 14px}
+  /* Forms single column */
   .fg,.dg2{grid-template-columns:1fr}
   .ff{grid-column:1}
   .dg4{flex-wrap:wrap}
-  .df{min-width:calc(50% - 1px);flex:none;padding:10px 8px}
-  .dfv{font-size:18px}
-  .modal{width:100% !important;border-radius:14px 14px 0 0;position:fixed;bottom:0;left:0;right:0;margin:0;max-height:92vh;animation:slideUp .2s ease}
-  .ov{align-items:flex-end;padding:0;background:rgba(0,0,0,.65)}
-  .mb{max-height:65vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .mf{padding:12px 14px;gap:10px}
-  .mf .btn{flex:1;justify-content:center;height:44px;font-size:14px}
-  .btn{height:36px}
-  .btn.sm{height:30px;font-size:12px}
+  .df{min-width:calc(50% - 1px);flex:none;padding:12px 8px}
+  .dfv{font-size:20px}
+  /* Modal slides up from bottom */
+  .modal{width:100% !important;border-radius:18px 18px 0 0;position:fixed;bottom:0;left:0;right:0;margin:0;max-height:92vh;animation:slideUp .25s cubic-bezier(.32,.72,0,1)}
+  .ov{align-items:flex-end;padding:0;background:rgba(0,0,0,.7)}
+  .mb{max-height:62vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .mf{padding:14px;gap:10px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  .mf .btn{flex:1;justify-content:center;height:48px;font-size:15px;border-radius:10px}
+  .btn{height:38px}
+  .btn.sm{height:34px;font-size:13px}
+  input,select{height:42px;font-size:15px}
   @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  /* Search box full width */
+  .ch input[type=text],.ch input[type=search]{width:100% !important;flex:1 1 100%}
+}
+/* Mobile inventory cards */
+.mcards-wrap{display:none}
+.mcard{background:var(--bg2);border:1px solid var(--bd);border-radius:14px;padding:14px;cursor:pointer;transition:transform .1s,background .15s}
+.mcard:active{transform:scale(.98);background:var(--bg3)}
+.mcard-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
+.mcard-name{font-size:15px;font-weight:600;color:var(--tx);line-height:1.3;flex:1}
+.mcard-stk{font-size:26px;font-weight:800;line-height:1;flex-shrink:0}
+.mcard-pn{font-size:13px;color:var(--tx2);font-family:monospace;margin-bottom:10px}
+.mcard-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.mcard-tag{font-size:11px;padding:3px 9px;border-radius:20px;background:var(--bg3);border:1px solid var(--bd);color:var(--tx2)}
+.mcard-tag.loc{background:rgba(56,139,253,.1);border-color:rgba(56,139,253,.25);color:#cfe3ff}
+.mcard-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-bottom:12px;padding:10px 0;border-top:1px solid var(--bd)}
+.mcard-f{display:flex;flex-direction:column;gap:1px;min-width:0}
+.mcard-fl{font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.mcard-fv{font-size:13px;color:var(--tx);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mcard-actions{display:flex;gap:8px}
+.mcard-actions .btn{height:40px;font-size:14px;border-radius:9px}
+/* Bottom tab bar */
+.btab{display:none}
+@media(max-width:768px){
+  .btab{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--bg2);border-top:1px solid var(--bd);padding:6px 4px;padding-bottom:max(6px,env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(0,0,0,.3)}
+  .btab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;color:var(--tx3);font-family:inherit;cursor:pointer;padding:4px 2px;border-radius:10px;transition:color .15s}
+  .btab-btn svg{opacity:.7;transition:opacity .15s}
+  .btab-btn span{font-size:10px;font-weight:500}
+  .btab-btn.on{color:var(--blue2)}
+  .btab-btn.on svg{opacity:1}
 }
 @media(max-width:420px){
-  .nb{font-size:11px;padding:5px 9px}
-  .ctitle{font-size:12px}
+  .ctitle{font-size:13px}
+  .btab-btn span{font-size:9px}
+  .mcard-name{font-size:14px}
 }
 </style>
 </head>
@@ -165,6 +200,16 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   <div id="pg"></div>
 </div>
 <div id="md"></div>
+
+
+<nav class="btab" id="btab">
+  <button class="btab-btn on" data-tab="inventory"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" fill="currentColor"/></svg><span>Inventory</span></button>
+  <button class="btab-btn" data-tab="rma"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2L2 7v10l10 5 10-5V7zm0 2.2l7 3.5v.3l-7 3.5-7-3.5v-.3zM4 9.3l7 3.5v7.4l-7-3.5zm16 0v7.4l-7 3.5v-7.4z" fill="currentColor"/></svg><span>Faulty</span></button>
+  <button class="btab-btn" data-tab="bulk"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M19 7h-3V5.5a2.5 2.5 0 0 0-5 0V7H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zm-6-1.5a.5.5 0 0 1 1 0V7h-1zM12 16l-4-4h2.5v-3h3v3H16z" fill="currentColor"/></svg><span>Import</span></button>
+  <button class="btab-btn" data-tab="log"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h12v2H3z" fill="currentColor"/></svg><span>Log</span></button>
+  <button class="btab-btn" data-tab="reports"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 21V8h3v13zm5.5 0V3h3v18zM16 21v-9h3v9z" fill="currentColor"/></svg><span>Reports</span></button>
+  <button class="btab-btn" data-tab="map"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg><span>Map</span></button>
+</nav>
 
 <script>
 
@@ -738,7 +783,8 @@ function renderInventory(){
   var typO='<option value="">All types</option>';
   ["LRU","LRM","Consumable"].forEach(function(t){typO+='<option value="'+t+'"'+(S.fType===t?" selected":"")+'>'+t+'</option>';});
   var rows="";
-  if(!items.length){rows='<tr><td colspan="10" class="empty">No items match your filters.</td></tr>';}
+  var cards="";
+  if(!items.length){rows='<tr><td colspan="10" class="empty">No items match your filters.</td></tr>';cards='<div class="empty">No items match your filters.</div>';}
   else{items.forEach(function(item){
     var tt=item.type?'<span class="tt tt'+item.type+'">'+item.type+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
     var sm=item.smr?'<span class="smrc">'+esc(item.smr)+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
@@ -757,6 +803,24 @@ function renderInventory(){
       +'<td class="hide-sm">'+sm+'</td>'
       +'<td>'+scell(item)+'</td>'
       +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button><button class="btn sm bg" data-action="receive" data-id="'+esc(item.id)+'" style="padding:0 10px">Recv</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
+    // Mobile card
+    var stkColor=item.qty===0?'var(--red)':item.qty<=2?'var(--amber)':'var(--green)';
+    cards+='<div class="mcard" data-action="detail" data-id="'+esc(item.id)+'">'
+      +'<div class="mcard-top">'
+      +'<div class="mcard-name">'+hl(item.name)+'</div>'
+      +'<div class="mcard-stk" style="color:'+stkColor+'">'+item.qty+'</div>'
+      +'</div>'
+      +'<div class="mcard-pn">'+hl(item.pn)+(item.alt_pn?' <span style="color:var(--tx3)">/ '+hl(item.alt_pn)+'</span>':'')+'</div>'
+      +'<div class="mcard-grid">'
+      +'<div class="mcard-f"><span class="mcard-fl">Sub-system</span><span class="mcard-fv">'+esc(item.subsys||"---")+'</span></div>'
+      +'<div class="mcard-f"><span class="mcard-fl">Location</span><span class="mcard-fv">'+esc(item.location||"---")+'</span></div>'
+      +'<div class="mcard-f"><span class="mcard-fl">Box</span><span class="mcard-fv">'+esc(item.floor||"---")+'</span></div>'
+      +'<div class="mcard-f"><span class="mcard-fl">S/N</span><span class="mcard-fv">'+esc(item.sn||"---")+'</span></div>'
+      +(item.type?'<div class="mcard-f"><span class="mcard-fl">Type</span><span class="mcard-fv" style="color:var(--blue2)">'+esc(item.type)+'</span></div>':'')
+      +(item.expiry?'<div class="mcard-f"><span class="mcard-fl">Expiry</span><span class="mcard-fv">'+ecell(item)+'</span></div>':'')
+      +'</div>'
+      +(canEdit()?'<div class="mcard-actions"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="flex:1">Draw</button><button class="btn sm bg" data-action="receive" data-id="'+esc(item.id)+'" style="flex:1">Receive</button></div>':'')
+      +'</div>';
   });}
   return'<div class="card"><div class="ch">'+
     '<div class="ctitle">Inventory <span style="color:var(--tx3);font-weight:400;margin-left:4px">'+items.length+' / '+S.items.length+'</span></div>'+
@@ -771,7 +835,8 @@ function renderInventory(){
     (canEdit()?'<button class="btn bp" id="btn-add">+ Add</button>':'')+
     '</div></div>'+
     (S._statFilter?'<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;justify-content:space-between"><span>Filtered: '+{low:"Low &amp; critical stock",zero:"Out of stock",exp:"Expiring / expired"}[S._statFilter]+' ('+items.length+' items)</span><button class="btn sm" id="btn-clearstatf" style="border-color:var(--amber);color:var(--amber)">Clear filter</button></div>':'')+
-    '<div class="tw"><table><thead><tr>'+
+    '<div class="mcards-wrap">'+cards+'</div>'+
+    '<div class="tw tw-table"><table><thead><tr>'+
     '<th data-sort="name" class="'+thc("name")+'">Description</th>'+
     '<th data-sort="pn" class="'+thc("pn")+'">Part No.</th>'+
     '<th class="hide-sm">Alt PN</th>'+
@@ -1344,6 +1409,11 @@ function setTab(tab){
     var el=document.getElementById("ntab-"+t);
     if(el) el.classList.toggle("on",t===tab);
   });
+  // Sync bottom tab bar
+  var bt=document.querySelectorAll(".btab-btn");
+  bt.forEach(function(b){b.classList.toggle("on",b.getAttribute("data-tab")===tab);});
+  // Scroll to top on tab change (mobile)
+  window.scrollTo(0,0);
   renderPage();
 }
 
@@ -1373,6 +1443,9 @@ function renderAll(){ renderStats(); renderPage(); }
 
 // ── GLOBAL EVENT LISTENERS ────────────────────────────────────────────────────
 document.addEventListener("click", function(ev){
+  // Bottom tab bar
+  var btb=ev.target.closest(".btab-btn");
+  if(btb){setTab(btb.getAttribute("data-tab"));return;}
   var t=ev.target;
 
   // --- stat strip clicks ---
