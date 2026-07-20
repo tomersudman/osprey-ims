@@ -589,7 +589,7 @@ function renderQRIntoDOM() {
     wrap.appendChild(canvas);
   } else {
     // Fallback for new items not in map: show URL as text
-    var apiUrl="https://chart.googleapis.com/chart?chs=280x280&cht=qr&chl="+encodeURIComponent(text)+"&choe=UTF-8&chld=M|2";
+    var apiUrl="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data="+encodeURIComponent(text);
     var img=document.createElement("img");
     img.width=280;img.height=280;
     img.style.cssText="border:8px solid #fff;border-radius:4px;display:block;margin:0 auto";
@@ -619,13 +619,107 @@ function showLabel(id) {
     (item.type?'<div style="font-size:12px;color:var(--tx3);margin-top:4px">'+item.type+(item.smr?' / SMR: '+esc(item.smr):'')+'</div>':'')+
     '<div style="margin-top:10px;background:var(--bg3);border-radius:6px;padding:8px;font-size:10px;color:var(--tx3);word-break:break-all">Scan opens app to this item</div>'+
     '</div></div>'+
-    '<div class="mf"><button class="btn" id="btn-print-label" style="margin-right:auto">Print label</button><button class="btn" id="modal-close-btn2">Close</button></div>'
+    '<div class="mf" style="flex-wrap:wrap;gap:8px"><button class="btn" id="btn-dl-qr" style="margin-right:auto">Download QR</button><button class="btn" id="btn-dl-label">Download Label</button><button class="btn" id="btn-print-label">Print</button><button class="btn" id="modal-close-btn2">Close</button></div>'
   );
   document.getElementById("btn-print-label").onclick=function(){ doPrintLabel(item); };
+  document.getElementById("btn-dl-qr").onclick=function(){ doDownloadQR(item); };
+  document.getElementById("btn-dl-label").onclick=function(){ doDownloadLabelPNG(item); };
   // Render QR into DOM now that modal is in place
   setTimeout(function(){ renderQRIntoDOM(); }, 10);
 }
 
+function getQRImageUrl(item) {
+  var baseUrl = window.location.href.split("?")[0].split("#")[0];
+  var deepLink = baseUrl + "?item=" + encodeURIComponent(item.id);
+  var packed = getQRForItem(item.id);
+  if (packed) return null; // uses canvas path, not a URL
+  return "https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data="+encodeURIComponent(deepLink);
+}
+function doDownloadQR(item) {
+  var wrap = document.getElementById("qr-canvas-wrap");
+  var canvas = wrap ? wrap.querySelector("canvas") : null;
+  if (canvas) {
+    var a=document.createElement("a");
+    a.href=canvas.toDataURL("image/png");
+    a.download="QR_"+item.pn.replace(/[^a-zA-Z0-9_-]/g,"_")+".png";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    return;
+  }
+  var url = getQRImageUrl(item);
+  if (!url) { alert("QR image not available."); return; }
+  fetch(url).then(function(r){return r.blob();}).then(function(blob){
+    var blobUrl=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=blobUrl;
+    a.download="QR_"+item.pn.replace(/[^a-zA-Z0-9_-]/g,"_")+".png";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(blobUrl);},2000);
+  }).catch(function(){
+    alert("Could not download automatically. Right-click the QR code image and choose \"Save image as...\" instead.");
+  });
+}
+function doDownloadLabelPNG(item) {
+  // Sized for 100x100mm label at 300 DPI
+  var W=1181,H=1181;
+  var canvas=document.createElement("canvas");
+  canvas.width=W;canvas.height=H;
+  var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle="#000";ctx.lineWidth=8;ctx.strokeRect(24,24,W-48,H-48);
+  ctx.fillStyle="#555";ctx.font="bold 30px Arial";ctx.textAlign="center";
+  ctx.fillText("O S P R E Y   I M S",W/2,100);
+
+  function finishLabel(qrImg){
+    if(qrImg){
+      var qs=680, qx=(W-qs)/2, qy=140;
+      ctx.drawImage(qrImg,qx,qy,qs,qs);
+    }
+    ctx.fillStyle="#000";ctx.font="bold 62px monospace";ctx.textAlign="center";
+    ctx.fillText(item.pn, W/2, 900);
+    ctx.fillStyle="#333";ctx.font="34px Arial";
+    wrapText(ctx, item.name, W/2, 960, W-140, 42);
+    ctx.fillStyle="#777";ctx.font="30px Arial";
+    var meta=item.location+((item.floor&&item.floor!=="0")?(" \u00b7 Floor "+item.floor):"");
+    ctx.fillText(meta, W/2, 1120);
+    var a=document.createElement("a");
+    a.href=canvas.toDataURL("image/png");
+    a.download="Label_"+item.pn.replace(/[^a-zA-Z0-9_-]/g,"_")+".png";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }
+  function wrapText(ctx,text,x,y,maxW,lh){
+    var words=text.split(" "),line="",lines=[];
+    for(var i=0;i<words.length;i++){
+      var test=line+words[i]+" ";
+      if(ctx.measureText(test).width>maxW&&line!==""){lines.push(line);line=words[i]+" ";}
+      else{line=test;}
+    }
+    lines.push(line);
+    lines=lines.slice(0,2);
+    for(var j=0;j<lines.length;j++){ctx.fillText(lines[j].trim(),x,y+j*lh);}
+  }
+
+  var wrap = document.getElementById("qr-canvas-wrap");
+  var existingCanvas = wrap ? wrap.querySelector("canvas") : null;
+  if (existingCanvas) {
+    var img=new Image();
+    img.onload=function(){finishLabel(img);};
+    img.src=existingCanvas.toDataURL();
+    return;
+  }
+  var url = getQRImageUrl(item);
+  if (!url) { finishLabel(null); return; }
+  var img2=new Image();
+  img2.crossOrigin="anonymous";
+  img2.onload=function(){finishLabel(img2);};
+  img2.onerror=function(){
+    fetch(url).then(function(r){return r.blob();}).then(function(blob){
+      var img3=new Image();
+      img3.onload=function(){finishLabel(img3);};
+      img3.src=URL.createObjectURL(blob);
+    }).catch(function(){finishLabel(null);});
+  };
+  img2.src=url;
+}
 function doPrintLabel(item) {
   // Get the canvas from the modal QR target
   var wrap = document.getElementById("qr-canvas-wrap");
@@ -637,17 +731,18 @@ function doPrintLabel(item) {
   w.document.write(
     '<!DOCTYPE html><html><head><title>Label - '+esc(item.pn)+'</title>'+
     '<style>'+
-    'body{font-family:Arial,sans-serif;padding:24px;background:#fff;color:#000;text-align:center}'+
-    '.box{border:3px solid #000;padding:20px;max-width:320px;margin:0 auto;border-radius:4px}'+
-    '.org{font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px;color:#555}'+
-    '.pn{font-size:22px;font-weight:bold;margin:6px 0;word-break:break-all;font-family:monospace}'+
-    '.nm{font-size:12px;color:#333;margin-bottom:4px}'+
-    '.meta{font-size:11px;color:#777;margin-top:3px}'+
+    '@page{size:100mm 100mm;margin:0}'+
+    'body{font-family:Arial,sans-serif;padding:0;background:#fff;color:#000;text-align:center;width:100mm;height:100mm;box-sizing:border-box;display:flex;align-items:center;justify-content:center}'+
+    '.box{border:2mm solid #000;padding:5mm;width:90mm;height:90mm;margin:0 auto;border-radius:1mm;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center}'+
+    '.org{font-size:3mm;letter-spacing:1mm;text-transform:uppercase;margin-bottom:2mm;color:#555}'+
+    '.pn{font-size:6mm;font-weight:bold;margin:2mm 0;word-break:break-all;font-family:monospace}'+
+    '.nm{font-size:3.2mm;color:#333;margin-bottom:1mm}'+
+    '.meta{font-size:2.8mm;color:#777;margin-top:1mm}'+
     '@media print{button{display:none}}'+
     '</style></head><body>'+
     '<div class="box">'+
     '<div class="org">OSPREY IMS</div>'+
-    (qrDataUrl ? '<img src="'+qrDataUrl+'" width="180" height="180" style="margin:12px auto;display:block;border:4px solid #fff;outline:1px solid #ccc">' : '')+
+    (qrDataUrl ? '<img src="'+qrDataUrl+'" style="width:55mm;height:55mm;margin:3mm auto;display:block">' : '')+
     '<div class="pn">'+esc(item.pn)+'</div>'+
     '<div class="nm">'+esc(item.name)+'</div>'+
     '<div class="meta">'+esc(item.location)+(item.floor&&item.floor!=="0"?' &middot; Floor '+item.floor:'')+'</div>'+
@@ -1682,6 +1777,8 @@ document.addEventListener("keydown",function(ev){
 load(); // load from localStorage first (instant)
 renderAll();
 updateRoleBadge();
+checkDeepLink(); // capture ?item= deep link immediately using local data, before login
+showLogin();
 // Then pull live data from Google Sheets (if configured)
 if (syncStatus()) {
   document.getElementById("sync-badge").style.display = "inline";
@@ -1698,16 +1795,11 @@ if (syncStatus()) {
         showSyncBadge("ok"); save(); renderAll();
       } else { showSyncBadge("ok"); }
       startAutoSync();
-      checkDeepLink();
     }).catch(function(){
       showSyncBadge("err");
       startAutoSync();
-      checkDeepLink();
     });
-} else {
-  checkDeepLink();
 }
-showLogin();
 
 function checkDeepLink() {
   // If URL has ?item=ID, open that item's detail panel after login
