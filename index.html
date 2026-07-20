@@ -65,11 +65,11 @@ tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
 .txdd{background:var(--rbg);color:var(--red);border:1px solid var(--rbd)}
 .txdr{background:var(--gbg);color:var(--green);border:1px solid var(--gbd)}
 .eok{color:var(--green);font-size:12px}.esoon{color:var(--amber);font-size:12px;font-weight:500}.egone{color:var(--red);font-size:12px;font-weight:500}
-#login-screen{display:none;position:fixed;inset:0;z-index:1000;background:radial-gradient(ellipse at top,var(--bg2) 0%,var(--bg) 60%);align-items:center;justify-content:center;padding:20px;overflow-y:auto}
-.login-card{width:100%;max-width:380px;background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:32px 28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}
-.login-title{font-size:22px;font-weight:800;color:var(--tx);letter-spacing:.02em;margin-bottom:2px}
-.login-sub{font-size:11px;color:var(--blue2);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:26px}
-.login-label{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin:18px 0 8px;text-align:left}
+#login-screen{display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+.login-card{width:90%;max-width:360px;background:var(--bg2);border:1px solid var(--bd2);border-radius:12px;padding:30px 34px;text-align:center}
+.login-title{font-size:26px;font-weight:900;color:#fff;letter-spacing:.02em;margin-bottom:2px;line-height:1}
+.login-sub{font-size:10px;color:var(--blue2);font-weight:600;letter-spacing:.22em;text-transform:uppercase;margin-bottom:22px}
+.login-label{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin:16px 0 8px;text-align:left}
 .login-user-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .login-user-row:active{transform:scale(.96)}
 #login-pin{width:100%;height:44px;text-align:center;font-size:18px;letter-spacing:.2em;border-radius:9px;border:1px solid var(--bd);background:var(--bg3);color:var(--tx);font-family:inherit}
@@ -105,21 +105,20 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
 ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
 /* ── Mobile ── */
 @media(max-width:768px){
-  /* Top nav tabs as horizontal scrollable pill strip (like Maintenance Manager) */
-  .topbar{flex-wrap:wrap;height:auto;padding:10px 14px 0;position:sticky;top:0;z-index:100;align-items:center}
-  .brand{padding-left:0 !important;gap:10px;flex:1 1 auto}
-  .brand img{height:34px !important}
-  .brand div div:first-child{font-size:17px !important}
-  .brand div div:last-child{font-size:8px !important}
+  /* Top bar: brand left, welcome/role/logout/live right, single row */
+  .ntabs{display:none !important}
+  .topbar{height:auto;padding:10px 12px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;align-items:center;gap:8px}
+  .brand{padding-left:0 !important;gap:8px;min-width:0}
+  .brand img{height:32px !important}
+  .brand div div:first-child{font-size:15px !important;white-space:nowrap}
+  .brand div div:last-child{font-size:7px !important;white-space:nowrap}
+  .topbar>div[style*="padding-right"]{padding-right:0 !important;gap:6px !important}
+  #sync-badge{font-size:9px !important;padding:2px 6px !important}
   #welcome-block{display:block !important}
-  #welcome-name{font-size:11px !important}
-  #btn-logout{padding:4px 9px !important;font-size:10px !important}
-  #welcome-role{font-size:9px !important}
-  .ntabs{display:flex !important;flex-wrap:nowrap;justify-content:flex-start;gap:6px;padding:10px 0;margin:0 -14px;padding-left:14px;padding-right:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;width:calc(100% + 28px);order:99}
-  .ntabs::-webkit-scrollbar{display:none}
-  .nb{flex-shrink:0;background:var(--bg3);border:1px solid var(--bd);padding:8px 15px;font-size:13px;border-radius:20px;white-space:nowrap}
-  .nb.on{background:var(--blue2);border-color:var(--blue2);color:#fff}
-  .main{padding:10px 12px 24px}
+  #welcome-name{font-size:10px !important;white-space:nowrap}
+  #welcome-role{font-size:8px !important}
+  #btn-logout{padding:4px 8px !important;font-size:9px !important}
+  .main{padding:10px 12px 84px}  /* bottom padding clears the fixed tab bar */
   .card{border-radius:14px;margin-bottom:12px;border:1px solid var(--bd)}
   .ch{padding:12px 14px;gap:8px;flex-wrap:wrap}
   .ctitle{font-size:14px;font-weight:600}
@@ -155,8 +154,16 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
 .mrow-sub{font-size:11px;color:var(--tx3);font-family:monospace;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mrow-dot{margin:0 5px;opacity:.5}
 .mrow-stk{font-size:20px;font-weight:800;line-height:1;flex-shrink:0;min-width:30px;text-align:right}
-/* Bottom tab bar removed - using top pill nav on mobile instead */
-.btab{display:none !important}
+/* Bottom tab bar - fixed, always visible on mobile */
+.btab{display:none}
+@media(max-width:768px){
+  .btab{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:180;background:var(--bg2);border-top:1px solid var(--bd);padding:6px 4px;padding-bottom:max(6px,env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(0,0,0,.3)}
+  .btab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;color:var(--tx3);font-family:inherit;cursor:pointer;padding:4px 2px;border-radius:10px;transition:color .15s}
+  .btab-btn svg{opacity:.7;transition:opacity .15s}
+  .btab-btn span{font-size:10px;font-weight:500}
+  .btab-btn.on{color:var(--blue2)}
+  .btab-btn.on svg{opacity:1}
+}
 @media(max-width:420px){
   .ctitle{font-size:13px}
   .btab-btn span{font-size:9px}
@@ -454,7 +461,7 @@ function showLogin(){
   el.style.display="flex";
   el.innerHTML=
     '<div class="login-card">'+
-    '<img src="'+LOGO_B64+'" style="height:56px;margin-bottom:6px" alt="">'+
+    '<img src="'+LOGO_B64+'" style="height:58px;width:auto;filter:drop-shadow(0 0 10px rgba(56,139,253,.5));margin-bottom:10px" alt="">'+
     '<div class="login-title">OSPREY IMS</div>'+
     '<div class="login-sub">Inventory Manager</div>'+
     '<div class="login-label">Select user</div>'+
