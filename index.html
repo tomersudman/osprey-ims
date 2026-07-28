@@ -1966,7 +1966,8 @@ function checkSSO(){
   var params = new URLSearchParams(window.location.search);
   var sess = params.get("session");
   if(sess){
-    var user = S.users.find(function(u){return u.role===sess;});
+    var sessNorm = String(sess).trim().toLowerCase();
+    var user = S.users.find(function(u){return String(u.role).trim().toLowerCase()===sessNorm;});
     if(user){
       S.currentUser = user;
       var sn = localStorage.getItem("osprey_name_"+user.id);
