@@ -83,23 +83,31 @@ select option{background:var(--bg3)}
 .tw::-webkit-scrollbar-track{background:var(--bg3)}
 .tw::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:6px;border:2px solid var(--bg3)}
 .tw::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
-.tw table{min-width:1080px;table-layout:auto}
-/* Inventory column widths - keep S/N and Location tight */
-.tw table th:nth-child(1),.tw table td:nth-child(1){min-width:190px;max-width:240px}
-.tw table th:nth-child(2),.tw table td:nth-child(2){width:130px}
-.tw table th:nth-child(3),.tw table td:nth-child(3){width:90px}
-.tw table th:nth-child(4),.tw table td:nth-child(4){width:100px}
-.tw table th:nth-child(5),.tw table td:nth-child(5){width:130px}
-.tw table th:nth-child(6),.tw table td:nth-child(6){width:56px;text-align:center}
-.tw table th:nth-child(7),.tw table td:nth-child(7){width:150px}
-.tw table th:nth-child(8),.tw table td:nth-child(8){width:70px}
-.tw table th:nth-child(9),.tw table td:nth-child(9){width:80px}
-.tw table th:nth-child(10),.tw table td:nth-child(10){width:160px}
+.tw table{min-width:1020px;table-layout:fixed}
+/* Inventory column widths - tightened so more fits without scrolling */
+.tw table th:nth-child(1),.tw table td:nth-child(1){width:180px}
+.tw table th:nth-child(2),.tw table td:nth-child(2){width:120px}
+.tw table th:nth-child(3),.tw table td:nth-child(3){width:80px}
+.tw table th:nth-child(4),.tw table td:nth-child(4){width:90px}
+.tw table th:nth-child(5),.tw table td:nth-child(5){width:120px}
+.tw table th:nth-child(6),.tw table td:nth-child(6){width:50px;text-align:center}
+.tw table th:nth-child(7),.tw table td:nth-child(7){width:120px}
+.tw table th:nth-child(8),.tw table td:nth-child(8){width:60px}
+.tw table th:nth-child(9),.tw table td:nth-child(9){width:70px}
+.tw table th:nth-child(10),.tw table td:nth-child(10){width:120px}
 .tw table th:nth-child(11),.tw table td:nth-child(11){width:130px}
-/* Freeze first column (Item Name) */
+/* Truncate long cell text with ellipsis so columns keep their width */
+.tw table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Item Name (first col) wraps to show full text */
+.tw table td:first-child{white-space:normal;line-height:1.3}
+/* Freeze first column (Item Name) to the LEFT */
 .tw table th:first-child,.tw table td:first-child{position:sticky;left:0;z-index:1;background:var(--bg2)}
 .tw table thead th:first-child{z-index:3;background:var(--bg3)}
 .tw table tbody tr:hover td:first-child{background:rgba(56,139,253,.09)}
+/* Freeze last column (Draw/Receive actions) to the RIGHT - always visible */
+.tw table th:last-child,.tw table td:last-child{position:sticky;right:0;z-index:1;background:var(--bg2);box-shadow:-6px 0 8px -4px rgba(0,0,0,.4)}
+.tw table thead th:last-child{z-index:3;background:var(--bg3)}
+.tw table tbody tr:hover td:last-child{background:rgba(56,139,253,.09)}
 table{width:100%;min-width:900px;border-collapse:collapse;font-size:13px}
 thead tr{background:var(--bg3)}
 .tw-table thead th{position:sticky;top:0;background:var(--bg3);z-index:2}
@@ -1048,8 +1056,6 @@ function renderInventory(){
   locs.forEach(function(l){locO+='<option value="'+esc(l)+'"'+(S.fLoc===l?" selected":"")+'>'+esc(l)+'</option>';});
   var subO='<option value="">All sub-sys</option>';
   subs.forEach(function(s){subO+='<option value="'+esc(s)+'"'+(S.fSub===s?" selected":"")+'>'+esc(s)+'</option>';});
-  var typO='<option value="">All types</option>';
-  ["LRU","LRM","Consumable"].forEach(function(t){typO+='<option value="'+t+'"'+(S.fType===t?" selected":"")+'>'+t+'</option>';});
   var rows="";
   var cards="";
   if(!items.length){rows='<tr><td colspan="10" class="empty">No items match your filters.</td></tr>';cards='<div class="empty">No items match your filters.</div>';}
@@ -1090,7 +1096,6 @@ function renderInventory(){
     '<button class="btn" id="btn-clear">Clear</button>'+
     '<select id="fLoc" style="width:105px">'+locO+'</select>'+
     '<select id="fSub" style="width:105px">'+subO+'</select>'+
-    '<select id="fType" style="width:105px">'+typO+'</select>'+
     '<select id="fExp" style="width:105px"><option value="">All expiry</option><option value="expiring"'+(S.fExp==="expiring"?" selected":"")+'>Expiring</option><option value="expired"'+(S.fExp==="expired"?" selected":"")+'>Expired</option></select>'+
     '<button class="btn bg sm" id="btn-xcsv">CSV</button>'+
     '<button class="btn sm" id="btn-bulk-labels">Print Labels</button>'+
@@ -1250,20 +1255,16 @@ function buildItemModal(id){
   uniq("subsys").forEach(function(s){subO+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
   return'<div class="mh"><div class="mt">'+(isEdit?"Edit item":"Add new item")+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb"><div class="fg">'+
-    '<div class="ff"><label class="fl">Description *</label><input id="m-name" type="text" value="'+esc(item.name||"")+'" style="width:100%"></div>'+
-    '<div><label class="fl">Part number</label><input id="m-pn" type="text" value="'+esc(item.pn||"")+'" style="width:100%"></div>'+
-    '<div><label class="fl">Alternative PN</label><input id="m-altpn" type="text" value="'+esc(item.alt_pn||"")+'" style="width:100%"></div>'+
-    '<div><label class="fl">Sub-system</label><input id="m-subsys" type="text" value="'+esc(item.subsys||"")+'" list="subdl" style="width:100%"><datalist id="subdl">'+subO+'</datalist></div>'+
-    '<div><label class="fl">Type</label><select id="m-type" style="width:100%"><option value="">-- select --</option>'+
-    ['LRU','LRM','Consumable'].map(function(t){return'<option value="'+t+'"'+(isEdit&&item.type===t?" selected":"")+'>'+t+'</option>';}).join('')+
-    '</select></div>'+
-    '<div><label class="fl">SMR Code</label><input id="m-smr" type="text" value="'+esc(item.smr||"")+'" placeholder="e.g. PAOZZ" style="width:100%"></div>'+
+    '<div class="ff"><label class="fl">Item Name *</label><input id="m-name" type="text" value="'+esc(item.name||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">P/N</label><input id="m-pn" type="text" value="'+esc(item.pn||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Alt P/N</label><input id="m-altpn" type="text" value="'+esc(item.alt_pn||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Sub-System</label><input id="m-subsys" type="text" value="'+esc(item.subsys||"")+'" list="subdl" style="width:100%"><datalist id="subdl">'+subO+'</datalist></div>'+
     '<div><label class="fl">Serial Number (S/N)</label><input id="m-sn" type="text" value="'+esc(item.sn||"")+'" placeholder="e.g. SN-001234" style="width:100%"></div>'+
     '<div><label class="fl">Location *</label><input id="m-location" type="text" value="'+esc(item.location||"")+'" list="locdl" style="width:100%"><datalist id="locdl">'+locO+'</datalist></div>'+
-    '<div><label class="fl">Floor</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Box</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
     (!isEdit?'<div><label class="fl">Initial quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div></div>')+
-    '<div class="ff"><label class="fl">Notes</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'+
+    '<div class="ff"><label class="fl">Comments</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'+
     '</div></div>'+
     '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button>'+
     '<button class="btn bp" id="btn-submit-item" data-id="'+esc(id||"")+'">'+(isEdit?"Save changes":"Add item")+'</button></div>';
@@ -1323,13 +1324,13 @@ function submitItem(id){
   if(id){
     item=S.items.find(function(i){return i.id===id;});
     item.pn=gv("m-pn")||"---"; item.alt_pn=gv("m-altpn"); item.name=name;
-    item.subsys=gv("m-subsys"); item.type=gv("m-type"); item.smr=gv("m-smr");
+    item.subsys=gv("m-subsys"); item.type=""; item.smr="";
     item.sn=gv("m-sn"); item.location=loc; item.floor=gv("m-floor");
     item.expiry=gv("m-expiry"); item.notes=gv("m-notes");
   } else {
     var qty=parseInt(gv("m-qty"))||0;
     item={id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
-      name:name,subsys:gv("m-subsys"),type:gv("m-type"),smr:gv("m-smr"),
+      name:name,subsys:gv("m-subsys"),type:"",smr:"",
       sn:gv("m-sn"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),
       notes:gv("m-notes"),qty:qty,initialQty:qty};
     S.items.push(item);
