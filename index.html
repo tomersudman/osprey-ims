@@ -228,6 +228,8 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   .btab-btn svg{opacity:.7;transition:opacity .15s}
   .btab-btn span{font-size:10px;font-weight:500}
   .btab-btn.on{color:var(--blue2)}
+  .btab-mm{color:var(--blue2)}
+  .btab-mm svg{opacity:.95}
   .btab-btn.on svg{opacity:1}
 }
 @media(max-width:420px){
@@ -291,6 +293,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   <button class="btab-btn" data-tab="log"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h12v2H3z" fill="currentColor"/></svg><span>Log</span></button>
   <button class="btab-btn" data-tab="reports"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 21V8h3v13zm5.5 0V3h3v18zM16 21v-9h3v9z" fill="currentColor"/></svg><span>Reports</span></button>
   <button class="btab-btn" data-tab="map"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg><span>Map</span></button>
+  <button class="btab-btn btab-mm" id="btab-goto-mm"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M2 12a10 10 0 0 1 10-10M12 2v4M2 12h4M12 8a4 4 0 0 1 4 4M22 12l-3-2v4zM12 22a10 10 0 0 1-10-10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Wingman</span></button>
 </nav>
 
 <div class="main">
@@ -1706,9 +1709,11 @@ function renderAll(){ renderStats(); renderPage(); }
 
 // ── GLOBAL EVENT LISTENERS ────────────────────────────────────────────────────
 document.addEventListener("click", function(ev){
+  // Maintenance Manager - mobile bottom bar
+  if(ev.target.closest("#btab-goto-mm")){goToMM();return;}
   // Bottom tab bar
   var btb=ev.target.closest(".btab-btn");
-  if(btb){setTab(btb.getAttribute("data-tab"));return;}
+  if(btb&&btb.getAttribute("data-tab")){setTab(btb.getAttribute("data-tab"));return;}
   // Maintenance Manager link
   if(ev.target.closest("#btn-goto-mm")){goToMM();return;}
   // Sidebar items
