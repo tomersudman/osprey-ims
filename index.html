@@ -49,6 +49,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,system-ui,sans-serif;
 .content{flex:1;min-width:0;display:flex;flex-direction:column}
 .sb-toggle{display:none;background:none;border:none;color:var(--tx);cursor:pointer;padding:4px;margin-right:6px}
 .topbar-title{font-size:16px;font-weight:700;color:var(--tx)}
+.top-mm-btn{display:inline-flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--bd2);color:var(--tx);cursor:pointer;font-family:inherit;font-size:12px;font-weight:500;padding:5px 11px;border-radius:9px;transition:all .15s;margin-right:2px}
+.top-mm-btn:hover{background:var(--bg4);border-color:var(--blue2);color:#fff}
+.top-mm-btn img{height:20px;width:auto;filter:drop-shadow(0 0 4px rgba(56,139,253,.4))}
+.top-mm-btn span{white-space:nowrap}
+.top-mm-btn{display:none}  /* desktop uses sidebar link */
 .sb-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:115}
 .topbar{display:flex;align-items:center;padding:0 28px;height:60px;background:var(--bg2);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:14px;flex-shrink:0}
@@ -156,9 +161,9 @@ tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
 .ff{grid-column:1/-1}
 .fl{font-size:12px;color:var(--tx2);margin-bottom:4px;display:block;font-weight:500}
 .dg4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
-.df{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:16px 10px;text-align:center}.df:last-child{border-right:none}
-.dfl{font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-weight:700}
-.dfv{font-size:26px;font-weight:800;line-height:1;text-align:center;color:var(--tx)}
+.df{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:13px 10px;text-align:center}.df:last-child{border-right:none}
+.dfl{font-size:8.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px;font-weight:700}
+.dfv{font-size:20px;font-weight:700;line-height:1;text-align:center;color:var(--tx)}
 .ds{margin-bottom:18px}
 .dst{font-size:12px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:11px;padding-bottom:7px;border-bottom:1px solid var(--bd)}
 .dg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -181,6 +186,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   .sidebar{position:fixed;top:0;left:0;height:100vh;transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:2px 0 20px rgba(0,0,0,.4)}
   .sidebar.open{transform:translateX(0)}
   .sb-toggle{display:inline-flex !important}
+  .top-mm-btn{display:inline-flex !important;padding:5px 9px}
   .ntabs{display:none !important}
   .topbar{height:52px;padding:0 14px;position:sticky;top:0;z-index:100;align-items:center;gap:4px}
   .topbar-title{font-size:15px}
@@ -283,6 +289,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   <button class="sb-toggle" id="sb-toggle" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
   <div class="topbar-title" id="topbar-title">Inventory</div>
   <div style="flex:1"></div>
+  <button id="top-goto-mm" class="top-mm-btn" title="Switch to Maintenance Manager"><img src="" id="top-mm-logo" alt=""><span>Wingman</span><svg viewBox="0 0 24 24" width="13" height="13" style="opacity:.7"><path d="M14 3h7v7M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <span id="role-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;background:var(--bg3);border:1px solid var(--bd);color:var(--tx2);cursor:pointer">Sign in</span>
 </div>
 <div class="main">
@@ -301,7 +308,6 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
   <button class="btab-btn" data-tab="log"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h12v2H3z" fill="currentColor"/></svg><span>Log</span></button>
   <button class="btab-btn" data-tab="reports"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 21V8h3v13zm5.5 0V3h3v18zM16 21v-9h3v9z" fill="currentColor"/></svg><span>Reports</span></button>
   <button class="btab-btn" data-tab="map"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg><span>Map</span></button>
-  <button class="btab-btn btab-mm" id="btab-goto-mm"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M2 12a10 10 0 0 1 10-10M12 2v4M2 12h4M12 8a4 4 0 0 1 4 4M22 12l-3-2v4zM12 22a10 10 0 0 1-10-10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Wingman</span></button>
 </nav>
 
 <div class="main">
@@ -472,6 +478,24 @@ function itemSerials(item){
   return [];
 }
 function isSerialized(item){return itemSerials(item).length>0;}
+function serialLoc(item,sn){
+  // Location for a specific serial, falling back to the item's main location
+  if(item.serialLocations&&item.serialLocations[sn]&&String(item.serialLocations[sn]).trim())return item.serialLocations[sn];
+  return item.location||"";
+}
+function setSerialLoc(item,sn,loc){
+  if(!item.serialLocations)item.serialLocations={};
+  if(loc&&loc.trim())item.serialLocations[sn]=loc.trim();
+  else delete item.serialLocations[sn];
+}
+function hasSplitLocations(item){
+  // True if serials are stored in more than one distinct location
+  var sers=itemSerials(item);
+  if(sers.length<2)return false;
+  var locs={};
+  sers.forEach(function(sn){locs[serialLoc(item,sn)||"?"]=1;});
+  return Object.keys(locs).length>1;
+}
 function esc(s) {
   return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -1001,6 +1025,34 @@ function dl(c,fn,mt){var a=document.createElement("a");a.href=URL.createObjectUR
 function dfield(l,v){return'<div class="df"><div class="dfl">'+l+'</div><div class="dfv" style="text-align:center">'+v+'</div></div>';}
 function dfield2(l,v){return'<div class="df2"><div class="dfl2">'+l+'</div><div class="dfv2">'+v+'</div></div>';}
 
+function serialLocationSection(item){
+  var sers=itemSerials(item);
+  if(!sers.length)return "";
+  // Group serials by their location
+  var groups={};var order=[];
+  sers.forEach(function(sn){
+    var loc=serialLoc(item,sn)||"(no location)";
+    if(!groups[loc]){groups[loc]=[];order.push(loc);}
+    groups[loc].push(sn);
+  });
+  // If all serials are in ONE location, don't show the section (nothing to split)
+  if(order.length<2)return "";
+  var rows=order.map(function(loc){
+    return '<tr>'+
+      '<td style="padding:8px 12px;vertical-align:top;white-space:nowrap"><span class="loctag">'+esc(loc)+'</span> <span style="color:var(--tx3);font-size:11px">('+groups[loc].length+' pcs)</span></td>'+
+      '<td style="padding:8px 12px;font-family:monospace;font-size:12px;color:var(--tx);line-height:1.7">'+groups[loc].map(esc).join(", ")+'</td>'+
+      '</tr>';
+  }).join("");
+  return '<div class="ds"><div class="dst">Serial locations &mdash; split across '+order.length+' locations</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;overflow:hidden">'+
+    '<table style="width:100%;border-collapse:collapse">'+
+    '<thead><tr style="background:var(--bg3)">'+
+    '<th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Location</th>'+
+    '<th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Serial Numbers</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-top:7px">To change serial locations, use the Edit button.</div>'+
+    '</div>';
+}
 function detailHTML(item){
   var txs=S.tx.filter(function(t){return t.itemId===item.id;}).sort(function(a,b){return b.ts-a.ts;});
   var drawn=txs.filter(function(t){return t.type==="draw";}).reduce(function(s,t){return s+t.qty;},0);
@@ -1033,14 +1085,15 @@ function detailHTML(item){
     '<div class="ds"><div class="dst">Item details</div><div class="dg2">'+
     dfield2("Sub-system",esc(item.subsys)||'<span style="color:var(--tx2)">---</span>')+
     (isSerialized(item)?
-      dfield2(itemSerials(item).length>1?"S/N(s)":"S/N",itemSerials(item).map(esc).join(", ")):
+      dfield2(itemSerials(item).length>1?"S/N(s)":"S/N",'<span style="font-family:monospace;font-size:12px">'+itemSerials(item).map(esc).join(", ")+'</span>'+(hasSplitLocations(item)?' <span style="color:var(--amber);font-size:11px">\u2022 split</span>':'')):
       dfield2("S/N",'<span style="color:var(--tx3)">---</span>'))+
-    dfield2("Location",item.location?'<span class="loctag">'+esc(item.location)+'</span>':'---')+
+    dfield2("Location",item.location?'<span class="loctag">'+esc(item.location)+'</span>'+(hasSplitLocations(item)?' <span style="font-size:10px;color:var(--tx3)">(default)</span>':''):'---')+
     dfield2("Box",item.floor?esc(item.floor):'---')+
     dfield2("Expiry",ecell(item))+
     dfield2("Transactions",txs.length)+
     '</div>'+(item.notes?'<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx2)">Note: '+esc(item.notes)+'</div>':"")+
     '</div>'+
+    (isSerialized(item)?serialLocationSection(item):"")+
     '<div class="ds"><div class="dst">Transaction history ('+txs.length+')</div>'+tl+'</div>'+
     '</div>'+
     '<div class="mf">'+
@@ -1223,10 +1276,11 @@ function buildTxModal(id,type){
   if(isLRU){
     if(isOut){
       var snOpts='<option value="">-- select S/N --</option>';
-      serials.forEach(function(sn){snOpts+='<option value="'+esc(sn)+'">'+esc(sn)+'</option>';});
-      serialField='<div class="ff"><label class="fl">Serial Number to draw *</label><select id="m-sn" style="width:100%">'+snOpts+'</select></div>';
+      serials.forEach(function(sn){var sl=serialLoc(item,sn);snOpts+='<option value="'+esc(sn)+'">'+esc(sn)+(sl?'  \u2014  '+esc(sl):'')+'</option>';});
+      serialField='<div class="ff"><label class="fl">Serial Number to draw *</label><select id="m-sn" style="width:100%">'+snOpts+'</select><div style="font-size:11px;color:var(--tx3);margin-top:4px">Each serial shows its storage location</div></div>';
     } else {
-      serialField='<div class="ff"><label class="fl">Serial Number received *</label><input id="m-sn" type="text" placeholder="Enter S/N of received item" style="width:100%"></div>';
+      serialField='<div class="ff"><label class="fl">Serial Number received *</label><input id="m-sn" type="text" placeholder="Enter S/N of received item" style="width:100%"></div>'+
+        '<div class="ff"><label class="fl">Location for this serial (optional)</label><input id="m-sn-loc" type="text" placeholder="'+esc(item.location||"e.g. Storage 1")+'" style="width:100%"></div>';
     }
   }
   var qtyMax=isLRU?1:(isOut?item.qty:"");
@@ -1247,6 +1301,35 @@ function buildTxModal(id,type){
     '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn '+(isOut?"br":"bg")+'" id="btn-submit-tx">Confirm</button></div>';
 }
 
+function locOptions(selected){
+  var opts='<option value="">-- default (item location) --</option>';
+  var seen={};
+  uniq("location").forEach(function(l){
+    if(!l||seen[l])return;seen[l]=1;
+    opts+='<option value="'+esc(l)+'"'+(selected===l?" selected":"")+'>'+esc(l)+'</option>';
+  });
+  return opts;
+}
+function serialLocEditTable(item){
+  var sers=itemSerials(item);
+  if(sers.length<1)return "";
+  var rows=sers.map(function(sn){
+    var cur=(item.serialLocations&&item.serialLocations[sn])?item.serialLocations[sn]:"";
+    return '<tr>'+
+      '<td style="padding:6px 10px;font-family:monospace;font-size:12px;color:var(--tx);white-space:nowrap">'+esc(sn)+'</td>'+
+      '<td style="padding:4px 10px">'+
+        '<select class="edit-sn-loc" data-sn="'+esc(sn)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px">'+locOptions(cur)+'</select>'+
+      '</td></tr>';
+  }).join("");
+  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers &amp; locations ('+sers.length+')</label>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Set a location per serial, or leave as default to use the item location above.</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:8px;overflow:hidden;max-height:220px;overflow-y:auto">'+
+    '<table style="width:100%;border-collapse:collapse">'+
+    '<thead><tr style="background:var(--bg3)">'+
+    '<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Serial</th>'+
+    '<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Location</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
 function buildItemModal(id){
   var isEdit=!!id;
   var item=isEdit?S.items.find(function(i){return i.id===id;}):{};
@@ -1259,14 +1342,18 @@ function buildItemModal(id){
     '<div><label class="fl">P/N</label><input id="m-pn" type="text" value="'+esc(item.pn||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Alt P/N</label><input id="m-altpn" type="text" value="'+esc(item.alt_pn||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Sub-System</label><input id="m-subsys" type="text" value="'+esc(item.subsys||"")+'" list="subdl" style="width:100%"><datalist id="subdl">'+subO+'</datalist></div>'+
-    '<div><label class="fl">Serial Number (S/N)</label><input id="m-sn" type="text" value="'+esc(item.sn||"")+'" placeholder="e.g. SN-001234" style="width:100%"></div>'+
+    ((isEdit&&isSerialized(item)&&itemSerials(item).length>1)?
+      '<div style="grid-column:1/-1">'+serialLocEditTable(item)+'</div>':
+      '<div><label class="fl">Serial Number (S/N)</label><input id="m-sn" type="text" value="'+esc(item.sn||"")+'" placeholder="e.g. SN-001234" style="width:100%"></div>')+
     '<div><label class="fl">Location *</label><input id="m-location" type="text" value="'+esc(item.location||"")+'" list="locdl" style="width:100%"><datalist id="locdl">'+locO+'</datalist></div>'+
     '<div><label class="fl">Box</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
-    (!isEdit?'<div><label class="fl">Initial quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div></div>')+
+    (!isEdit?'<div><label class="fl">Initial quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="'+esc(item.qty!=null?item.qty:1)+'" style="width:100%"></div>')+
     '<div class="ff"><label class="fl">Comments</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'+
     '</div></div>'+
-    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button>'+
+    '<div class="mf">'+
+    (isEdit?'<button class="btn br" id="btn-delete-item" data-id="'+esc(id||"")+'" style="margin-right:auto">Delete item</button>':'')+
+    '<button class="btn" id="modal-close-btn2">Cancel</button>'+
     '<button class="btn bp" id="btn-submit-item" data-id="'+esc(id||"")+'">'+(isEdit?"Save changes":"Add item")+'</button></div>';
 }
 
@@ -1303,9 +1390,13 @@ function submitTx(){
     if(isOut){
       item.serials=item.serials.filter(function(s){return s!==snPicked;});
       item.sn=item.serials[0]||"";
+      if(item.serialLocations&&item.serialLocations[snPicked])delete item.serialLocations[snPicked];
     } else {
       if(item.serials.indexOf(snPicked)<0)item.serials.push(snPicked);
       item.sn=item.serials[0]||snPicked;
+      // If a location was entered on receive, assign it to this serial
+      var rl=document.getElementById("m-sn-loc");
+      if(rl&&rl.value.trim())setSerialLoc(item,snPicked,rl.value.trim());
     }
   }
   item.qty=isOut?item.qty-qty:item.qty+qty;
@@ -1316,6 +1407,31 @@ function submitTx(){
   closeModal(); renderAll();
 }
 
+function saveSerialLocs(itemId){
+  var item=S.items.find(function(i){return i.id===itemId;});
+  if(!item)return;
+  document.querySelectorAll('.sn-loc-input[data-item="'+itemId+'"]').forEach(function(inp){
+    setSerialLoc(item,inp.getAttribute("data-sn"),inp.value);
+  });
+  save();
+  if(syncStatus()){showSyncBadge("saving");pushItem(item);}
+  renderAll();
+  // Re-open the detail modal to reflect changes
+  S.modal={type:"detail",id:itemId};
+  showModal(detailHTML(item));
+}
+function deleteItem(id){
+  if(!id)return;
+  if(!canAdmin()){alert("Only an admin can delete items.");return;}
+  var item=S.items.find(function(i){return i.id===id;});
+  if(!item)return;
+  if(!confirm('Delete "'+item.name+'" (P/N '+item.pn+') permanently?\n\nThis removes the item and cannot be undone.'))return;
+  S.items=S.items.filter(function(i){return i.id!==id;});
+  save();
+  pushToSheets();
+  closeModal();
+  renderAll();
+}
 function submitItem(id){
   var name=gv("m-name").trim(), loc=gv("m-location").trim();
   if(!name){alert("Please enter a description.");return;}
@@ -1327,6 +1443,12 @@ function submitItem(id){
     item.subsys=gv("m-subsys"); item.type=""; item.smr="";
     item.sn=gv("m-sn"); item.location=loc; item.floor=gv("m-floor");
     item.expiry=gv("m-expiry"); item.notes=gv("m-notes");
+    var nq=parseInt(gv("m-qty")); if(!isNaN(nq)&&nq>=0)item.qty=nq;
+    // Save per-serial locations from the edit dropdowns
+    var snLocSelects=document.querySelectorAll(".edit-sn-loc");
+    if(snLocSelects.length){
+      snLocSelects.forEach(function(sel){setSerialLoc(item,sel.getAttribute("data-sn"),sel.value);});
+    }
   } else {
     var qty=parseInt(gv("m-qty"))||0;
     item={id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
@@ -1548,6 +1670,7 @@ function renderBulkImport(){
   var COLS=["Item Name","P/N","Alt P/N","S/N","Qty","Sub-System","Location","Box","Exp","Comments"];
   var COLW=[240,130,100,90,55,150,130,80,110,150];
   var SUBSYS_LIST=[];(function(){var seen={};S.items.forEach(function(it){var s=(it.subsys||"").trim();if(s&&!seen[s.toLowerCase()]){seen[s.toLowerCase()]=1;SUBSYS_LIST.push(s);}});SUBSYS_LIST.sort();})();
+  var LOC_LIST=[];(function(){var seen={};S.items.forEach(function(it){var l=(it.location||"").trim();if(l&&!seen[l.toLowerCase()]){seen[l.toLowerCase()]=1;LOC_LIST.push(l);}});LOC_LIST.sort();})();
   var nr=S._bulkTableRows||20;
   var thead='<tr style="background:var(--bg3)">'+COLS.map(function(col,ci){return'<th style="width:'+COLW[ci]+'px;min-width:'+COLW[ci]+'px;padding:5px 8px;font-size:10px;white-space:nowrap">'+col+'</th>';}).join('')+'</tr>';
   var tbody='';
@@ -1558,6 +1681,13 @@ function renderBulkImport(){
       SUBSYS_LIST.forEach(function(s){opts+='<option value="'+esc(s)+'">'+esc(s)+'</option>';});
       opts+='<option value="OTHER">OTHER</option>';
       return'<td style="padding:2px 3px;width:'+COLW[ci]+'px"><select class="bulk-cell" data-row="'+i+'" data-col="'+ci+'" style="width:100%;height:26px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:3px;padding:0 4px;font-size:12px">'+opts+'</select></td>';
+    }
+    if(ci===6){
+      // Location dropdown (existing locations + Other)
+      var lopts='<option value="">--</option>';
+      LOC_LIST.forEach(function(l){lopts+='<option value="'+esc(l)+'">'+esc(l)+'</option>';});
+      lopts+='<option value="__other__">Other (type new)...</option>';
+      return'<td style="padding:2px 3px;width:'+COLW[ci]+'px"><select class="bulk-cell" data-row="'+i+'" data-col="'+ci+'" style="width:100%;height:26px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:3px;padding:0 4px;font-size:12px" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.value=\'\';}}">'+lopts+'</select></td>';
     }
     var itype=(ci===8)?'date':'text';
     var extra=(ci===8)?" onfocus='try{this.showPicker();}catch(e){}' onclick='try{this.showPicker();}catch(e){}'":"";
@@ -1574,7 +1704,15 @@ function parseBulkPaste(){
   var table=document.getElementById("bulk-tbody");
   if(!table){alert("Table not found.");return;}
   var rows=[];
-  table.querySelectorAll("tr").forEach(function(tr){var v=Array.from(tr.querySelectorAll("input.bulk-cell")).map(function(inp){return inp.value.trim();});if(v.some(function(x){return x;}))rows.push({name:v[0]||"",pn:v[1]||"",alt_pn:v[2]||"",sn:v[3]||"",qty:parseInt(v[4])||1,subsys:v[5]||"",location:v[6]||"",floor:v[7]||"",expiry:v[8]||"",notes:v[9]||"",type:"",smr:""});});
+  table.querySelectorAll("tr").forEach(function(tr){
+    var cells=Array.from(tr.querySelectorAll(".bulk-cell"));
+    if(!cells.length)return;
+    // Order by data-col so inputs and selects line up correctly
+    var v=[];
+    cells.forEach(function(el){var col=parseInt(el.getAttribute("data-col"));v[col]=(el.value||"").trim();});
+    for(var k=0;k<10;k++){if(v[k]===undefined)v[k]="";}
+    if(v.some(function(x){return x;}))rows.push({name:v[0]||"",pn:v[1]||"",alt_pn:v[2]||"",sn:v[3]||"",qty:parseInt(v[4])||1,qtyBlank:!(v[4]&&String(v[4]).trim()),subsys:v[5]||"",location:v[6]||"",floor:v[7]||"",expiry:v[8]||"",notes:v[9]||"",type:"",smr:""});
+  });
   if(!rows.length){alert("No data entered.");return;}
   var res=rows.map(function(row){
     // Normalize for comparison - trim + lowercase
@@ -1596,10 +1734,24 @@ function parseBulkPaste(){
   var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px"><div style="font-size:13px;margin-bottom:12px"><b>'+res.length+' rows:</b> <span style="color:var(--green)">'+nN+' new</span> &nbsp;<span style="color:var(--blue2)">'+nU+' update</span> &nbsp;<span style="color:var(--amber)">'+nC+' review</span></div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg4)"><th style="padding:5px 8px">Include</th><th>Description</th><th>Part No.</th><th>Qty</th><th>Location</th><th>Status</th></tr></thead><tbody>';
   res.forEach(function(r,i){
-    var sc=r.status==="new"?"var(--green)":r.status==="exact"?"var(--blue2)":"var(--amber)";
-    var sl=r.status==="new"?"NEW":r.status==="exact"?"UPDATE QTY":"REVIEW";
+    var qtyMissing=r.row.qtyBlank;
+    var sc,sl;
+    if(r.status==="new"){sc="var(--green)";sl="NEW";}
+    else if(r.status==="exact"){sc="var(--green)";sl="GOOD TO GO";}
+    else {sc="var(--amber)";sl="REVIEW";}
+    if(qtyMissing){sc="var(--red)";sl="QTY NOT INSERTED";}
     var chk=(r.status==="cpn"||r.status==="cname")?"":"checked";
-    var locCell=r.status==="new"?'<input type="text" id="bulk-loc-'+i+'" value="'+esc(r.row.location||"")+'" placeholder="Location *" style="width:100px;height:24px;padding:0 6px;font-size:11px;background:var(--bg);border:1px solid '+(r.row.location?'var(--bd)':'var(--amber)')+';color:var(--tx);border-radius:3px">':'<span class="loctag">'+esc(r.location||"?")+'</span>';
+    var locCell;
+    if(r.status==="new"){
+      var lopts='<option value="">-- select --</option>';var lseen={};
+      // Include the pasted location first if it isn't already a known location
+      if(r.row.location&&r.row.location.trim()){lseen[r.row.location]=1;lopts+='<option value="'+esc(r.row.location)+'" selected>'+esc(r.row.location)+'</option>';}
+      uniq("location").forEach(function(l){if(!l||lseen[l])return;lseen[l]=1;lopts+='<option value="'+esc(l)+'">'+esc(l)+'</option>';});
+      lopts+='<option value="__other__">Other (type new)...</option>';
+      locCell='<select id="bulk-loc-'+i+'" style="width:130px;height:26px;font-size:11px;background:var(--bg);border:1px solid '+(r.row.location?'var(--bd)':'var(--amber)')+';color:var(--tx);border-radius:3px" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.value=\'\';}}">'+lopts+'</select>';
+    } else {
+      locCell='<span class="loctag">'+esc(r.location||"?")+'</span> <span style="font-size:10px;color:var(--tx3)">(kept)</span>';
+    }
     html+='<tr style="border-bottom:1px solid var(--bd)"><td style="padding:5px 8px;text-align:center"><input type="checkbox" class="bulk-skip-cb" data-idx="'+i+'" '+chk+'></td><td style="padding:5px 8px">'+esc(r.row.name)+'</td><td style="padding:5px 8px"><span class="pn">'+esc(r.row.pn)+'</span></td><td style="padding:5px 8px;text-align:center;font-weight:600">'+r.row.qty+'</td><td style="padding:5px 8px">'+locCell+'</td><td style="padding:5px 8px"><span style="color:'+sc+';font-weight:600">'+sl+'</span>'+(r.reason?'<div style="font-size:10px;color:var(--amber)">'+r.reason+'</div>':"")+'</td></tr>';
   });
   html+='</tbody></table></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn bp" id="btn-bulk-confirm">Import checked rows</button><button class="btn" id="btn-bulk-back">Back</button></div></div>';
@@ -1607,6 +1759,20 @@ function parseBulkPaste(){
   document.getElementById("bulk-preview").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
+function showImportDone(ad,up,sk){
+  var line=function(icon,color,txt){return '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg);border:1px solid var(--bd);border-radius:9px;margin-bottom:8px"><span style="font-size:18px;color:'+color+'">'+icon+'</span><span style="font-size:14px;color:var(--tx)">'+txt+'</span></div>';};
+  var html='<div class="mh"><div class="mt">Import complete</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb">'+
+    '<div style="font-size:15px;font-weight:600;color:var(--tx);margin-bottom:14px">Done!</div>'+
+    line('\u2713','var(--green)','<b>'+ad+'</b> new item'+(ad===1?'':'s')+' added')+
+    line('\u2713','var(--blue2)','<b>'+up+'</b> item'+(up===1?'':'s')+' updated')+
+    line('\u23ed','var(--tx3)','<b>'+sk+'</b> item'+(sk===1?'':'s')+' skipped')+
+    '</div>'+
+    '<div class="mf"><button class="btn bp" id="btn-import-done-ok">OK</button></div>';
+  showModal(html);
+  var ok=document.getElementById("btn-import-done-ok");
+  if(ok)ok.onclick=function(){closeModal();setTab("inventory");};
+}
 function executeBulkImport(){
   if(!_bulkMatches.length){alert("Run preview first.");return;}
   var missingLoc=false;
@@ -1614,16 +1780,25 @@ function executeBulkImport(){
   if(missingLoc){alert("Please enter location for all new items.");return;}
   var skip={};document.querySelectorAll(".bulk-skip-cb").forEach(function(cb){if(!cb.checked)skip[cb.getAttribute("data-idx")]=true;});
   var ad=0,up=0,sk=0;
+  var arrDate=(document.getElementById("bulk-arrival-date")||{}).value||tod();
+  var importedTx=[];
   _bulkMatches.forEach(function(r,i){
     if(skip[i]){sk++;return;}
-    if(r.status==="exact"){r.match.qty+=r.row.qty;up++;}
-    else{var loc=r.location||r.row.location||"Unknown";if(r.status==="new"){var li=document.getElementById("bulk-loc-"+i);if(li&&li.value.trim())loc=li.value.trim();else if(r.row.location)loc=r.row.location;else loc="Unknown";}
-    S.items.push({id:String(Date.now()+i*7),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:r.row.sn,location:loc,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:r.row.qty,initialQty:r.row.qty});ad++;}
+    if(r.status==="exact"){
+      r.match.qty+=r.row.qty;up++;
+      importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:r.row.qty,remaining:r.match.qty});
+    }
+    else{var loc=r.location||r.row.location||"Unknown";if(r.status==="new"){var li=document.getElementById("bulk-loc-"+i);var pv=li?li.value.trim():"";loc=pv||((r.row.location&&r.row.location.trim())?r.row.location.trim():"Unknown");}
+    var newItem={id:String(Date.now()+i*7),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:r.row.sn,location:loc,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:r.row.qty,initialQty:r.row.qty};
+    S.items.push(newItem);ad++;
+    importedTx.push({itemId:newItem.id,itemName:newItem.name,addQty:newItem.qty,remaining:newItem.qty});}
   });
-  if(ad>0){var arrDate=(document.getElementById("bulk-arrival-date")||{}).value||tod();S.items.slice(S.items.length-ad).forEach(function(item){S.tx.push({id:String(Date.now()+(Math.random()*999|0)),itemId:item.id,itemName:item.name,type:"receive",qty:item.qty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import",reasonCode:"Import",remaining:item.qty,ts:Date.now()});});}
+  // Log a receive transaction for EVERY imported line (new or updated)
+  importedTx.forEach(function(t){
+    S.tx.push({id:String(Date.now()+(Math.random()*99999|0)),itemId:t.itemId,itemName:t.itemName,type:"receive",qty:t.addQty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import",reasonCode:"Import",remaining:t.remaining,ts:Date.now()});
+  });
   save();_bulkMatches=[];if(syncStatus()){showSyncBadge("saving");pushToSheets();}
-  alert("Done!\n\u2713 "+ad+" added\n\u2713 "+up+" updated\n\u23ed "+sk+" skipped");
-  setTab("inventory");
+  showImportDone(ad,up,sk);
 }
 
 document.addEventListener("paste",function(ev){
@@ -1639,7 +1814,18 @@ document.addEventListener("paste",function(ev){
     for(var ci=0;ci<cv.length;ci++){
       var sel=".bulk-cell[data-row='"+(sr+ri)+"'][data-col='"+(sc5+ci)+"']";
       var inp=document.querySelector(sel);
-      if(inp)inp.value=cv[ci].trim();
+      if(inp){
+        var val=cv[ci].trim();
+        if(inp.tagName==="SELECT"){
+          // If pasted value isn't an existing option, add it so it sticks
+          var found=false;
+          for(var o=0;o<inp.options.length;o++){if(inp.options[o].value===val){found=true;break;}}
+          if(!found&&val){var opt=document.createElement("option");opt.value=val;opt.text=val;inp.insertBefore(opt,inp.firstChild);}
+          inp.value=val;
+        } else {
+          inp.value=val;
+        }
+      }
     }
   }
 });
@@ -1686,6 +1872,9 @@ function pageHeader(){
 }
 function renderPage(){
   var scrollY=window.scrollY;
+  // Preserve the inventory table's internal scroll position too
+  var oldTw=document.querySelector(".tw");
+  var twLeft=oldTw?oldTw.scrollLeft:0, twTop=oldTw?oldTw.scrollTop:0;
   var srchVal=S.search, srchPos=0;
   var oldSrch=document.getElementById("srch");
   if(oldSrch) srchPos=oldSrch.selectionStart||srchVal.length;
@@ -1699,6 +1888,9 @@ function renderPage(){
   else if(S.tab==="users") h=renderUsers();
   document.getElementById("pg").innerHTML=pageHeader()+h;
   window.scrollTo(0,scrollY);
+  // Restore table scroll position
+  var newTw=document.querySelector(".tw");
+  if(newTw){newTw.scrollLeft=twLeft;newTw.scrollTop=twTop;}
   if(S.tab==="inventory"){
     var inp=document.getElementById("srch");
     if(inp&&document.activeElement!==inp&&S._searchFocused){
@@ -1710,8 +1902,8 @@ function renderAll(){ renderStats(); renderPage(); }
 
 // ── GLOBAL EVENT LISTENERS ────────────────────────────────────────────────────
 document.addEventListener("click", function(ev){
-  // Maintenance Manager - mobile bottom bar
-  if(ev.target.closest("#btab-goto-mm")){goToMM();return;}
+  // Maintenance Manager - top-right button
+  if(ev.target.closest("#top-goto-mm")){goToMM();return;}
   // Bottom tab bar
   var btb=ev.target.closest(".btab-btn");
   if(btb&&btb.getAttribute("data-tab")){setTab(btb.getAttribute("data-tab"));return;}
@@ -1825,6 +2017,8 @@ return;}
   // --- modal submit buttons ---
   if(t.id==="btn-submit-tx"){submitTx();return;}
   if(t.id==="btn-submit-item"){submitItem(t.getAttribute("data-id")||null);return;}
+  if(t.id==="btn-delete-item"){deleteItem(t.getAttribute("data-id"));return;}
+  if(t.id==="btn-save-sn-locs"){saveSerialLocs(t.getAttribute("data-item"));return;}
 
   // --- detail modal action buttons ---
   if(t.id==="btn-draw-item"){var did=t.getAttribute("data-id");closeModal();S.modal={type:"draw",id:did};showModal(buildTxModal(did,"draw"));return;}
@@ -1929,6 +2123,7 @@ document.addEventListener("keydown",function(ev){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 load(); // load from localStorage first (instant)
+(function(){var tl=document.getElementById("top-mm-logo");if(tl&&typeof LOGO_B64!=="undefined")tl.src=LOGO_B64;})();
 renderAll();
 updateRoleBadge();
 checkDeepLink(); // capture ?item= deep link immediately using local data, before login
