@@ -331,6 +331,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
 <div id="login-screen"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 var KEY = "osprey_v1";
@@ -456,6 +457,7 @@ function load() {
       S.tx    = d.tx    || [];
       S.users = d.users || cp(DEFAULT_USERS);
       S.rma   = d.rma   || [];
+      S._newItems = d.newItems || [];
     } else {
       S.items = cp(SEED);
       S.tx    = [];
@@ -466,7 +468,7 @@ function load() {
   } catch(e) { S.items=cp(SEED); S.tx=[]; S.users=cp(DEFAULT_USERS); }
 }
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users,rma:S.rma})); } catch(e) {}
+  try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users,rma:S.rma,newItems:S._newItems||[]})); } catch(e) {}
 }
 
 // Save item locally + push just that item to Sheets
@@ -556,6 +558,7 @@ function filt() {
     if(S._statFilter==="low"&&["low","crit"].indexOf(sst(item))<0)return false;
     if(S._statFilter==="zero"&&sst(item)!=="zero")return false;
     if(S._statFilter==="exp"){var se=est(item);if(se!=="soon"&&se!=="gone")return false;}
+    if(S._showNewOnly&&(!S._newItems||S._newItems.indexOf(item.id)<0))return false;
     if(!S._statFilter){
       if(q&&![item.name,item.pn,item.alt_pn||"",item.subsys||"",item.smr||""].some(function(v){return v.toLowerCase().indexOf(q)>=0;}))return false;
       if(S.fLoc&&item.location!==S.fLoc)return false;
@@ -565,7 +568,16 @@ function filt() {
     }
     return true;
   });
-  if(S.sCol) items=items.slice().sort(function(a,b){
+  if(S.sCol==="_added"){
+    // Recently added: items in _newItems first (newest first), then the rest
+    var newSet={};(S._newItems||[]).forEach(function(id,idx){newSet[id]=idx;});
+    items=items.slice().sort(function(a,b){
+      var an=(a.id in newSet), bn=(b.id in newSet);
+      if(an&&bn)return newSet[b.id]-newSet[a.id];
+      if(an)return -1; if(bn)return 1;
+      return (+b.id||0)-(+a.id||0);
+    });
+  } else if(S.sCol) items=items.slice().sort(function(a,b){
     var av=a[S.sCol],bv=b[S.sCol];
     if(S.sCol==="qty"||S.sCol==="initialQty"){av=+av||0;bv=+bv||0;}
     else{av=String(av||"").toLowerCase();bv=String(bv||"").toLowerCase();}
@@ -755,7 +767,7 @@ function showLabel(id) {
     '<div class="qr-svg" style="text-align:center;margin:12px 0">'+qr+'</div>'+
     '<div style="font-size:18px;font-weight:700;margin:10px 0 4px">'+esc(item.pn)+'</div>'+
     '<div style="font-size:13px;color:var(--tx2);margin-bottom:6px">'+esc(item.name)+'</div>'+
-    '<div style="font-size:12px;color:var(--tx3)">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Floor '+item.floor:'')+'</div>'+
+    '<div style="font-size:12px;color:var(--tx3)">'+esc(item.location)+(item.floor&&item.floor!=="0"?' / Box '+item.floor:'')+'</div>'+
     (item.type?'<div style="font-size:12px;color:var(--tx3);margin-top:4px">'+item.type+(item.smr?' / SMR: '+esc(item.smr):'')+'</div>':'')+
     '<div style="margin-top:10px;background:var(--bg3);border-radius:6px;padding:8px;font-size:10px;color:var(--tx3);word-break:break-all">Scan opens app to this item</div>'+
     '</div></div>'+
@@ -819,7 +831,7 @@ function doDownloadLabelPNG(item) {
     ctx.fillStyle="#333";ctx.font="34px Arial";
     wrapText(ctx, item.name, W/2, 960, W-140, 42);
     ctx.fillStyle="#777";ctx.font="30px Arial";
-    var meta=item.location+((item.floor&&item.floor!=="0")?(" \u00b7 Floor "+item.floor):"");
+    var meta=item.location+((item.floor&&item.floor!=="0")?(" \u00b7 Box "+item.floor):"");
     ctx.fillText(meta, W/2, 1120);
     var a=document.createElement("a");
     a.href=canvas.toDataURL("image/png");
@@ -860,42 +872,131 @@ function doDownloadLabelPNG(item) {
   };
   img2.src=url;
 }
-function bulkPrintLabels(items) {
+function makeLabelCanvas(item, seqNum, seqTotal, cb){
+  // Draws one 100x100mm @300DPI label onto a canvas, calls cb(canvas)
+  var W=1181,H=1181;
+  var canvas=document.createElement("canvas");
+  canvas.width=W;canvas.height=H;
+  var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle="#000";ctx.lineWidth=8;ctx.strokeRect(24,24,W-48,H-48);
+  ctx.fillStyle="#555";ctx.font="bold 30px Arial";ctx.textAlign="left";
+  ctx.fillText("O S P R E Y   I M S",60,90);
+  if(seqNum){ctx.fillStyle="#000";ctx.font="bold 30px Arial";ctx.textAlign="right";ctx.fillText(seqNum+" / "+seqTotal,W-60,90);}
+  ctx.textAlign="center";
+  function wrapText(text,x,y,maxW,lh,maxLines){
+    var words=String(text).split(" "),line="",lines=[];
+    for(var i=0;i<words.length;i++){var test=line+words[i]+" ";if(ctx.measureText(test).width>maxW&&line!==""){lines.push(line);line=words[i]+" ";}else{line=test;}}
+    lines.push(line);lines=lines.slice(0,maxLines||2);
+    for(var j=0;j<lines.length;j++){ctx.fillText(lines[j].trim(),x,y+j*lh);}
+    return lines.length;
+  }
+  function finish(qrImg){
+    if(qrImg){var qs=620,qx=(W-qs)/2,qy=150;ctx.drawImage(qrImg,qx,qy,qs,qs);}
+    var yy=850;
+    ctx.fillStyle="#000";ctx.font="bold 58px monospace";ctx.textAlign="center";
+    ctx.fillText(item.pn,W/2,yy);yy+=60;
+    ctx.fillStyle="#333";ctx.font="34px Arial";
+    var nl=wrapText(item.name,W/2,yy,W-140,42,2);yy+=nl*42+10;
+    if(item._serial){ctx.fillStyle="#000";ctx.font="bold 38px Arial";ctx.fillText("S/N: "+item._serial,W/2,yy);yy+=46;}
+    ctx.fillStyle="#777";ctx.font="30px Arial";
+    var meta=(item.location||"")+((item.floor&&item.floor!=="0")?(" \u00b7 Box "+item.floor):"");
+    ctx.fillText(meta,W/2,Math.min(yy,1130));
+    cb(canvas);
+  }
+  var baseUrl=window.location.href.split("?")[0].split("#")[0];
+  var deepLink=baseUrl+"?item="+encodeURIComponent(item.id)+(item._serial?("&sn="+encodeURIComponent(item._serial)):"");
+  var url="https://api.qrserver.com/v1/create-qr-code/?size=620x620&margin=0&data="+encodeURIComponent(deepLink);
+  var img=new Image();img.crossOrigin="anonymous";
+  img.onload=function(){finish(img);};
+  img.onerror=function(){
+    fetch(url).then(function(r){return r.blob();}).then(function(blob){var i2=new Image();i2.onload=function(){finish(i2);};i2.src=URL.createObjectURL(blob);}).catch(function(){finish(null);});
+  };
+  img.src=url;
+}
+function bulkDownloadLabels(items, startAt, grandTotal){
+  if(!items.length){alert("No items to download.");return;}
+  startAt=startAt||0;
+  var total=grandTotal||(startAt+items.length);
+  var jsPDFlib=(window.jspdf&&window.jspdf.jsPDF)?window.jspdf.jsPDF:(window.jsPDF||null);
+  if(!jsPDFlib){alert("PDF library not loaded. Please refresh and try again.");return;}
+  // Progress modal
+  showModal('<div class="mh"><div class="mt">Building label PDF\u2026</div></div><div class="mb"><div id="dl-prog" style="font-size:14px;color:var(--tx2)">Starting\u2026</div><div style="height:8px;background:var(--bg3);border-radius:4px;margin-top:12px;overflow:hidden"><div id="dl-bar" style="height:100%;width:0%;background:var(--blue2);transition:width .2s"></div></div><div style="font-size:12px;color:var(--tx3);margin-top:10px">One PDF, one page per label (100\u00d7100mm). Print it once \u2014 all labels come out in order.</div></div>', true);
+  // Each PDF page is 100x100mm
+  var pdf=new jsPDFlib({orientation:"portrait",unit:"mm",format:[100,100]});
+  var done=0;
+  function updateProg(){
+    var pct=Math.round(done/items.length*100);
+    var pe=document.getElementById("dl-prog");if(pe)pe.textContent="Rendering label "+done+" of "+items.length+"\u2026";
+    var be=document.getElementById("dl-bar");if(be)be.style.width=pct+"%";
+  }
+  function processOne(idx){
+    if(idx>=items.length){
+      var pe=document.getElementById("dl-prog");if(pe)pe.textContent="Saving PDF\u2026";
+      pdf.save("Osprey_Labels_"+(startAt+1)+"-"+(startAt+items.length)+".pdf");
+      closeModal();
+      return;
+    }
+    var item=items[idx];
+    var seqNum=startAt+idx+1;
+    makeLabelCanvas(item,seqNum,total,function(canvas){
+      var imgData=canvas.toDataURL("image/png");
+      if(idx>0)pdf.addPage([100,100],"portrait");
+      // Draw image to fill the 100x100mm page
+      pdf.addImage(imgData,"PNG",0,0,100,100);
+      done++;updateProg();
+      setTimeout(function(){processOne(idx+1);},50);
+    });
+  }
+  updateProg();
+  processOne(0);
+}
+function bulkPrintLabels(items, startAt, grandTotal) {
   if (!items.length) { alert("No items to print."); return; }
+  startAt = startAt || 0;
+  var total = grandTotal || (startAt + items.length);
   var baseUrl = window.location.href.split("?")[0].split("#")[0];
-  var pages = items.map(function(item){
-    var deepLink = baseUrl + "?item=" + encodeURIComponent(item.id);
+  var pages = items.map(function(item, idx){
+    var num = startAt + idx + 1;
+    var deepLink = baseUrl + "?item=" + encodeURIComponent(item.id) + (item._serial?("&sn="+encodeURIComponent(item._serial)):"");
     var qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(deepLink);
+    var snLine = item._serial ? ('<div class="sn">S/N: '+esc(item._serial)+'</div>') : '';
     return '<div class="pg"><div class="box">'+
-      '<div class="org">OSPREY IMS</div>'+
+      '<div class="hdr"><span class="org">OSPREY IMS</span><span class="seq">'+num+' / '+total+'</span></div>'+
       '<img class="qr" src="'+qrUrl+'" onerror="this.style.display=\'none\'">'+
       '<div class="pn">'+esc(item.pn)+'</div>'+
       '<div class="nm">'+esc(item.name)+'</div>'+
-      '<div class="meta">'+esc(item.location||"")+((item.floor&&item.floor!=="0")?(' &middot; Floor '+esc(item.floor)):'')+'</div>'+
+      snLine+
+      '<div class="meta">'+esc(item.location||"")+((item.floor&&item.floor!=="0")?(' &middot; Box '+esc(item.floor)):'')+'</div>'+
       '</div></div>';
   }).join("");
 
   var w = window.open("", "_blank");
   w.document.write(
-    '<!DOCTYPE html><html><head><title>Bulk Labels ('+items.length+')</title>'+
+    '<!DOCTYPE html><html><head><title>Labels</title>'+
     '<style>'+
-    '@page{size:100mm 100mm;margin:0}'+
+    '@page{size:100mm 98mm;margin:0}'+   /* 98mm height = safety margin so it never spills to a 2nd label */
+    'html,body{margin:0;padding:0;width:100mm}'+
     '*{box-sizing:border-box}'+
-    'body{font-family:Arial,sans-serif;margin:0;padding:0}'+
-    '.pg{width:100mm;height:100mm;display:flex;align-items:center;justify-content:center;page-break-after:always}'+
-    '.pg:last-child{page-break-after:auto}'+
-    '.box{border:2mm solid #000;padding:5mm;width:90mm;height:90mm;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}'+
-    '.org{font-size:3mm;letter-spacing:1mm;text-transform:uppercase;margin-bottom:2mm;color:#555}'+
-    '.qr{width:55mm;height:55mm;margin:3mm auto}'+
-    '.pn{font-size:6mm;font-weight:bold;margin:2mm 0;word-break:break-all;font-family:monospace;color:#000}'+
-    '.nm{font-size:3.2mm;color:#333;margin-bottom:1mm}'+
-    '.meta{font-size:2.8mm;color:#777;margin-top:1mm}'+
-    '#bar{position:fixed;top:0;left:0;right:0;background:#222;color:#fff;padding:10px 16px;font-family:Arial;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:99}'+
-    '#bar button{padding:8px 20px;font-size:14px;cursor:pointer;border:none;border-radius:6px;background:#2563eb;color:#fff}'+
-    '@media print{#bar{display:none}.pg{padding-top:0}}'+
-    '@media screen{body{padding-top:48px}}'+
+    'body{font-family:Arial,sans-serif}'+
+    '.pg{width:100mm;height:98mm;overflow:hidden;page-break-after:always;break-after:page;padding:2mm 3mm}'+
+    '.pg:last-child{page-break-after:auto;break-after:auto}'+
+    '.box{width:100%;height:100%;border:1mm solid #000;padding:2.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}'+
+    '.hdr{width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:1mm}'+
+    '.org{font-size:2.6mm;letter-spacing:.7mm;text-transform:uppercase;color:#555}'+
+    '.seq{font-size:2.6mm;font-weight:bold;color:#000}'+
+    '.qr{width:46mm;height:46mm;margin:1mm auto}'+
+    '.pn{font-size:4.6mm;font-weight:bold;margin:1mm 0 .6mm;word-break:break-all;font-family:monospace;color:#000}'+
+    '.nm{font-size:2.9mm;color:#333;margin-bottom:.5mm;line-height:1.15}'+
+    '.sn{font-size:3mm;font-weight:bold;color:#000;margin:.4mm 0}'+
+    '.meta{font-size:2.5mm;color:#777}'+
+    '#bar{position:fixed;top:0;left:0;right:0;background:#222;color:#fff;padding:12px 16px;font-family:Arial;font-size:13px;line-height:1.5;z-index:99}'+
+    '#bar b{color:#7ab8ff}'+
+    '#bar button{margin-top:8px;padding:8px 20px;font-size:14px;cursor:pointer;border:none;border-radius:6px;background:#2563eb;color:#fff}'+
+    '@media print{#bar{display:none}}'+
+    '@media screen{body{padding-top:120px}.pg{outline:1px dashed #ccc;margin-bottom:4px}}'+
     '</style></head><body>'+
-    '<div id="bar"><span>'+items.length+' labels ready &mdash; select your printer, choose "100x100mm" or "Actual size" (not "Fit to page")</span><button onclick="window.print()">Print All</button></div>'+
+    '<div id="bar">Printing labels '+(startAt+1)+'\u2013'+(startAt+items.length)+' of '+total+'. In the print dialog you MUST: turn OFF <b>Headers and footers</b>, set Margins=<b>None</b>, Paper=<b>100\u00d7100mm</b> (or your label size), Scale=<b>100%</b> (never "Fit").<br><button onclick="window.print()">Print All</button></div>'+
     pages+
     '</body></html>'
   );
@@ -926,7 +1027,7 @@ function doPrintLabel(item) {
     (qrDataUrl ? '<img src="'+qrDataUrl+'" style="width:55mm;height:55mm;margin:3mm auto;display:block">' : '')+
     '<div class="pn">'+esc(item.pn)+'</div>'+
     '<div class="nm">'+esc(item.name)+'</div>'+
-    '<div class="meta">'+esc(item.location)+(item.floor&&item.floor!=="0"?' &middot; Floor '+item.floor:'')+'</div>'+
+    '<div class="meta">'+esc(item.location)+(item.floor&&item.floor!=="0"?' &middot; Box '+item.floor:'')+'</div>'+
     (item.type?'<div class="meta">'+esc(item.type)+(item.smr?' &middot; SMR: '+esc(item.smr):'')+'</div>':'')+
     '</div>'+
     '<br><button onclick="window.print()" style="padding:8px 20px;font-size:14px;cursor:pointer">Print</button>'+
@@ -961,7 +1062,7 @@ function renderMap() {
       +'<span>'+esc(loc)+'</span>'+badge+'</div>';
     floors.forEach(function(fl){
       html+='<div style="padding:8px 14px;border-bottom:1px solid var(--bd)">';
-      if(fl!=="General") html+='<div style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Floor '+esc(fl)+'</div>';
+      if(fl!=="General") html+='<div style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Box '+esc(fl)+'</div>';
       byLoc[loc][fl].forEach(function(item){
         var sc=item.qty===0?"var(--red)":item.qty<=2?"var(--amber)":"var(--green)";
         html+='<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;cursor:pointer" data-action="detail" data-id="'+esc(item.id)+'">'
@@ -1163,7 +1264,8 @@ function renderInventory(){
     '<select id="fSub" style="width:105px">'+subO+'</select>'+
     '<select id="fExp" style="width:105px"><option value="">All expiry</option><option value="expiring"'+(S.fExp==="expiring"?" selected":"")+'>Expiring</option><option value="expired"'+(S.fExp==="expired"?" selected":"")+'>Expired</option></select>'+
     '<button class="btn bg sm" id="btn-xcsv">CSV</button>'+
-    '<button class="btn sm" id="btn-bulk-labels">Print Labels</button>'+
+    '<button class="btn sm" id="btn-bulk-labels">Download Labels</button>'+
+    ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
     (canEdit()?'<button class="btn bp" id="btn-add">+ Add</button>':'')+
     '</div></div>'+
     (S._statFilter?'<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;justify-content:space-between"><span>Filtered: '+{low:"Low &amp; critical stock",zero:"Out of stock",exp:"Expiring / expired"}[S._statFilter]+' ('+items.length+' items)</span><button class="btn sm" id="btn-clearstatf" style="border-color:var(--amber);color:var(--amber)">Clear filter</button></div>':'')+
@@ -1468,6 +1570,7 @@ function submitItem(id){
       sn:gv("m-sn"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),
       notes:gv("m-notes"),qty:qty,initialQty:qty};
     S.items.push(item);
+    if(!S._newItems)S._newItems=[];S._newItems.push(item.id);
   }
   saveAndPushItem(item);
   closeModal(); renderAll();
@@ -1850,17 +1953,16 @@ function executeBulkImport(){
     else{
       var loc="Unknown";
       if(r.status==="new"){
-        // 1) preview dropdown value  2) pasted location  3) Unknown
+        // Priority: pasted location (from paste-table dropdown) -> preview dropdown override -> Unknown
+        var rowLoc=(r.row.location&&r.row.location.trim())?r.row.location.trim():"";
         var li=document.getElementById("bulk-loc-"+i);
-        var pv=(li&&li.value&&li.value!=="__other__")?li.value.trim():"";
-        if(pv)loc=pv;
-        else if(r.row.location&&r.row.location.trim())loc=r.row.location.trim();
-        else loc="Unknown";
+        var pv=(li&&li.value&&li.value!=="__other__"&&li.value.trim())?li.value.trim():"";
+        loc=rowLoc||pv||"Unknown";
       } else {
         loc=r.location||r.row.location||"Unknown";
       }
     var newItem={id:String(Date.now()+i*7),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:r.row.sn,location:loc,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:r.row.qty,initialQty:r.row.qty};
-    S.items.push(newItem);ad++;
+    S.items.push(newItem);if(!S._newItems)S._newItems=[];S._newItems.push(newItem.id);ad++;
     importedTx.push({itemId:newItem.id,itemName:newItem.name,addQty:newItem.qty,remaining:newItem.qty});}
   });
   // Log a receive transaction for EVERY imported line (new or updated)
@@ -2096,10 +2198,53 @@ return;}
   if(t.id==="btn-edit-item"){var eid=t.getAttribute("data-id");closeModal();S.modal={type:"edit",id:eid};showModal(buildItemModal(eid));return;}
   if(t.id==="btn-label-item"){showLabel(t.getAttribute("data-id"));return;}
   if(t.id==="btn-print-label"){return;} // handled by onclick set in showLabel
+  if(t.id==="btn-show-new"){
+    S._showNewOnly=!S._showNewOnly;
+    S.sCol=S._showNewOnly?"_added":S.sCol;
+    renderPage();
+    return;
+  }
+  if(t.id==="btn-clear-new"){
+    if(confirm("Clear the \"New\" mark from all "+(S._newItems?S._newItems.length:0)+" item(s)?\n\nThe items stay in your inventory \u2014 they just won't show as new anymore.")){
+      S._newItems=[];
+      S._showNewOnly=false;
+      save();
+      renderPage();
+    }
+    return;
+  }
   if(t.id==="btn-bulk-labels"){
-    var itemsToPrint=filt();
-    if(!confirm("Print labels for "+itemsToPrint.length+" item(s)? This opens one print job with all of them, one label per page (100x100mm).\n\nTip: to print only some items, search or filter first, then click Print Labels again."))return;
-    bulkPrintLabels(itemsToPrint);
+    var baseItems=filt();
+    if(!baseItems.length){alert("No items to print.");return;}
+    // Ask whether to print one label per serial for serialized items
+    var hasSerials=baseItems.some(function(it){return itemSerials(it).length>1;});
+    var perSerial=false;
+    if(hasSerials){
+      perSerial=confirm("Some items have multiple serial numbers.\n\nOK = print ONE label PER serial number (each unit gets its own label with its S/N).\n\nCancel = print ONE label per item (item-level).");
+    }
+    // Build the print list
+    var itemsToPrint=[];
+    baseItems.forEach(function(it){
+      var sers=itemSerials(it);
+      if(perSerial&&sers.length>1){
+        sers.forEach(function(sn){
+          var copy={};for(var k in it){if(it.hasOwnProperty(k))copy[k]=it[k];}
+          copy._serial=sn;
+          copy.location=serialLoc(it,sn)||it.location;
+          itemsToPrint.push(copy);
+        });
+      } else {
+        itemsToPrint.push(it);
+      }
+    });
+    var totalN=itemsToPrint.length;
+    var startStr=prompt("Download "+totalN+" label(s) as ONE PDF"+(perSerial?" (one per serial)":"")+".\n\nEach label is one 100\u00d7100mm page. Open the PDF and print once \u2014 all labels come out in order.\n\nIf your label roll ran out earlier, enter the number to START from to continue where you left off.\n\nStart from label number:", "1");
+    if(startStr===null)return;
+    var startNum=parseInt(startStr)||1;
+    if(startNum<1)startNum=1;
+    if(startNum>totalN){alert("Start number is higher than the total ("+totalN+"). Nothing to print.");return;}
+    var subset=itemsToPrint.slice(startNum-1);
+    bulkDownloadLabels(subset, startNum-1, totalN);
     return;
   }
 
