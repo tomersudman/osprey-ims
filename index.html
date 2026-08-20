@@ -1564,6 +1564,21 @@ function submitItem(id){
       snLocSelects.forEach(function(sel){setSerialLoc(item,sel.getAttribute("data-sn"),sel.value);});
     }
   } else {
+    var pnVal=(gv("m-pn")||"").trim();
+    // Duplicate P/N check (only if a real P/N was entered)
+    if(pnVal && pnVal!=="---"){
+      var dup=S.items.find(function(i){return (i.pn||"").trim().toLowerCase()===pnVal.toLowerCase();});
+      if(dup){
+        // Capture the form values, then show the merge dialog
+        var pending={
+          name:name, pn:pnVal, alt_pn:gv("m-altpn"), subsys:gv("m-subsys"),
+          sn:gv("m-sn"), location:loc, floor:gv("m-floor"), expiry:gv("m-expiry"),
+          notes:gv("m-notes"), qty:parseInt(gv("m-qty"))||0
+        };
+        showDuplicatePNDialog(dup, pending);
+        return;
+      }
+    }
     var qty=parseInt(gv("m-qty"))||0;
     item={id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
       name:name,subsys:gv("m-subsys"),type:"",smr:"",
@@ -1574,6 +1589,65 @@ function submitItem(id){
   }
   saveAndPushItem(item);
   closeModal(); renderAll();
+}
+function showDuplicatePNDialog(existing, pending){
+  var locO="";var seen={};
+  uniq("location").forEach(function(l){if(!l||seen[l])return;seen[l]=1;locO+='<option value="'+esc(l)+'"'+(pending.location===l?" selected":"")+'>'+esc(l)+'</option>';});
+  var curSerials=itemSerials(existing);
+  var html='<div class="mh"><div class="mt">P/N already exists</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb">'+
+    '<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--tx)">'+
+      '<b>'+esc(existing.pn)+'</b> already exists as:<br>'+
+      '<span style="color:var(--tx2)">"'+esc(existing.name)+'" &middot; '+esc(existing.location||"no location")+' &middot; current stock: <b>'+(existing.qty||0)+'</b>'+
+      (curSerials.length?'<br>Existing serials: '+curSerials.map(esc).join(", "):'')+'</span>'+
+    '</div>'+
+    '<div style="font-size:13px;color:var(--tx2);margin-bottom:12px">Add the new stock to this existing item:</div>'+
+    '<div class="fg">'+
+    '<div><label class="fl">Quantity to add *</label><input id="dup-qty" type="number" min="1" value="'+(pending.qty||1)+'" style="width:100%"></div>'+
+    '<div><label class="fl">New quantity will be</label><input id="dup-newtotal" type="text" value="'+((existing.qty||0)+(pending.qty||1))+'" disabled style="width:100%;opacity:.7"></div>'+
+    '<div><label class="fl">Serial number (optional)</label><input id="dup-sn" type="text" value="'+esc(pending.sn||"")+'" placeholder="S/N of the unit(s) added" style="width:100%"></div>'+
+    '<div><label class="fl">Location for this serial</label><input id="dup-loc" type="text" value="'+esc(pending.location||existing.location||"")+'" list="dup-locdl" style="width:100%"><datalist id="dup-locdl">'+locO+'</datalist></div>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-top:8px">Leave the serial blank if these units aren\'t serialized. The location can be the same as the existing one or different.</div>'+
+    '</div>'+
+    '<div class="mf">'+
+    '<button class="btn" id="dup-cancel">Cancel</button>'+
+    '<button class="btn bg" id="dup-separate">Add as separate line</button>'+
+    '<button class="btn bp" id="dup-merge" data-id="'+esc(existing.id)+'">Add to existing item</button>'+
+    '</div>';
+  showModal(html);
+  // Live-update the "new total" as qty changes
+  var qi=document.getElementById("dup-qty");
+  if(qi)qi.oninput=function(){var nt=document.getElementById("dup-newtotal");if(nt)nt.value=(existing.qty||0)+(parseInt(qi.value)||0);};
+  document.getElementById("dup-cancel").onclick=function(){closeModal();};
+  document.getElementById("dup-merge").onclick=function(){mergeIntoExisting(existing.id,pending);};
+  document.getElementById("dup-separate").onclick=function(){
+    // Create as a genuinely separate line
+    var it={id:String(Date.now()),pn:pending.pn||"---",alt_pn:pending.alt_pn,name:pending.name,subsys:pending.subsys,type:"",smr:"",sn:pending.sn,location:pending.location,floor:pending.floor,expiry:pending.expiry,notes:pending.notes,qty:pending.qty,initialQty:pending.qty};
+    S.items.push(it);
+    if(!S._newItems)S._newItems=[];S._newItems.push(it.id);
+    saveAndPushItem(it);closeModal();renderAll();
+  };
+}
+function mergeIntoExisting(id, pending){
+  var item=S.items.find(function(i){return i.id===id;});
+  if(!item)return;
+  var addQty=parseInt(document.getElementById("dup-qty").value)||0;
+  var newSn=(document.getElementById("dup-sn").value||"").trim();
+  var newLoc=(document.getElementById("dup-loc").value||"").trim();
+  if(addQty<1){alert("Enter a quantity to add.");return;}
+  item.qty=(item.qty||0)+addQty;
+  // Add the serial if provided
+  if(newSn){
+    if(!Array.isArray(item.serials))item.serials=item.sn?[item.sn]:[];
+    if(item.serials.indexOf(newSn)<0)item.serials.push(newSn);
+    if(!item.sn)item.sn=newSn;
+    if(newLoc)setSerialLoc(item,newSn,newLoc);
+  }
+  // Log a receive transaction
+  S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:"receive",qty:addQty,date:tod(),person:S._fullName||"Manual add",purpose:"Added to existing P/N"+(newSn?" [S/N: "+newSn+"]":""),reasonCode:"Restock",remaining:item.qty,ts:Date.now()});
+  saveAndPushItem(item);
+  closeModal();renderAll();
 }
 
 
