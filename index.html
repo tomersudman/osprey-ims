@@ -1453,8 +1453,7 @@ function buildTxModal(id,type){
     '<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="1"'+(qtyMax?' max="'+qtyMax+'"':'')+' value="1"'+(isLRU?' readonly':'')+' style="width:100%"></div>'+
     '<div><label class="fl">Date *</label><input id="m-date" type="date" value="'+tod()+'" style="width:100%"></div>'+
     '<div class="ff"><label class="fl">Person *</label><input id="m-person" type="text" placeholder="Full name" style="width:100%" value="'+(S._fullName||(S.currentUser?esc(S.currentUser.name):''))+'"></div>'+
-    (isOut?'<div><label class="fl">Reason code *</label><select id="m-reason" style="width:100%">'+rO+'</select></div>':'')+
-    '<div class="'+(isOut?"":"ff")+'"><label class="fl">Notes</label><input id="m-purpose" type="text" style="width:100%"></div>'+
+    '<div class="ff"><label class="fl">Note / Reason</label><input id="m-purpose" type="text" placeholder="e.g. reason for draw, work order, remarks" style="width:100%"></div>'+
     '</div></div>'+
     '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn '+(isOut?"br":"bg")+'" id="btn-submit-tx">Confirm</button></div>';
 }
@@ -1530,11 +1529,11 @@ function closeModal(){ document.getElementById("md").innerHTML=""; S.modal=null;
 // ── SUBMIT ACTIONS ────────────────────────────────────────────────────────────
 function submitTx(){
   var qty=parseInt(gv("m-qty"))||0, date=gv("m-date")||tod();
-  var person=gv("m-person").trim(), reason=gv("m-reason"), purpose=gv("m-purpose");
+  var person=gv("m-person").trim(), reason="", purpose=gv("m-purpose");
   var isOut=S.modal.type==="draw";
   if(!qty){alert("Please enter a valid quantity.");return;}
   if(!person){alert("Please enter the person name.");return;}
-  if(isOut&&!reason){alert("Please select a reason code.");return;}
+  
   var item=S.items.find(function(i){return i.id===S.modal.id;});
   if(isOut&&qty>item.qty){alert("Only "+item.qty+" unit(s) in stock.");return;}
   var isSer=isSerialized(item);
