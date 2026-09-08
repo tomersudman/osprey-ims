@@ -309,6 +309,7 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
 </div><!-- /content -->
 </div><!-- /applayout -->
 <div class="sb-scrim" id="sb-scrim"></div>
+<div style="position:fixed;bottom:2px;right:4px;font-size:9px;color:#456;z-index:1;opacity:.5;pointer-events:none">build BOX-3</div>
 <div id="md"></div>
 
 
@@ -375,6 +376,12 @@ function loadFromSheets(callback) {
     .then(function(r){return r.json();})
     .then(function(d){
       if (d.items && d.items.length) {
+        // Normalize serials to arrays and parse serialBoxes/serialLocations if they came as strings
+        d.items.forEach(function(it){
+          if(typeof it.serials==="string"&&it.serials.trim()){it.serials=it.serials.split(/[\n,]+/).map(function(s){return s.trim();}).filter(function(s){return s;});}
+          if(typeof it.serialLocations==="string"&&it.serialLocations.trim()){try{it.serialLocations=JSON.parse(it.serialLocations);}catch(e){delete it.serialLocations;}}
+          if(typeof it.serialBoxes==="string"&&it.serialBoxes.trim()){try{it.serialBoxes=JSON.parse(it.serialBoxes);}catch(e){delete it.serialBoxes;}}
+        });
         S.items = d.items;
         S.tx    = d.tx    || [];
         S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);
@@ -490,6 +497,11 @@ function cp(x)  { return JSON.parse(JSON.stringify(x)); }
 function gv(id) { var el=document.getElementById(id); return el?el.value:""; }
 function itemSerials(item){
   if(Array.isArray(item.serials)&&item.serials.length)return item.serials.slice();
+  // Robustness: if serials came back as a string (e.g. from Sheets), split it into an array
+  if(typeof item.serials==="string"&&item.serials.trim()){
+    var arr=item.serials.split(/[\n,]+/).map(function(s){return s.trim();}).filter(function(s){return s;});
+    if(arr.length)return arr;
+  }
   if(item.sn&&String(item.sn).trim())return [String(item.sn).trim()];
   return [];
 }
@@ -2675,7 +2687,7 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS build: BOX-COLUMN active (serial detail shows Serial/Location/Box) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c OSPREY IMS build v-BOX-3 (Serial/Location/Box table) ", "background:#1F4E79;color:#fff;padding:4px");
 </script>
 </body>
 </html>
