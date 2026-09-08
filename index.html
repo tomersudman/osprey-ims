@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Osprey IMS</title>
+<title>OSPREY-V2BOX-VERIFY</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -309,7 +309,6 @@ mark{background:rgba(31,111,235,.25);color:var(--blue2);border-radius:2px}
 </div><!-- /content -->
 </div><!-- /applayout -->
 <div class="sb-scrim" id="sb-scrim"></div>
-<div style="position:fixed;bottom:2px;right:4px;font-size:9px;color:#456;z-index:1;opacity:.5;pointer-events:none">build BOX-3</div>
 <div id="md"></div>
 
 
@@ -354,7 +353,7 @@ var S = {
   items:[], tx:[], users:[], rma:[], tab:"inventory",
   search:"", fLoc:"", fSub:"", fType:"", fExp:"",
   sCol:"", sDir:1, modal:null,
-  currentUser: null, _statFilter: null, _searchFocused: false, _fullName: "", _bulkTableRows: 20, _logType: "", _logPerson: "", _rptType: "all", _rptFaulty: true, _rmaHistory: false, _pendingShipId: null, _pendingRecvId: null, _fullName: "", _bulkTableRows: 20, _logType: "", _logPerson: ""
+  currentUser: null, _statFilter: null, _searchFocused: false, _fullName: "", _bulkTableRows: 40, _logType: "", _logPerson: "", _rptType: "all", _rptFaulty: true, _rmaHistory: false, _pendingShipId: null, _pendingRecvId: null, _fullName: "", _bulkTableRows: 40, _logType: "", _logPerson: ""
 };
 
 function canEdit()   { return S.currentUser && (S.currentUser.role === "admin" || S.currentUser.role === "operator"); }
@@ -379,6 +378,8 @@ function loadFromSheets(callback) {
         // Normalize serials to arrays and parse serialBoxes/serialLocations if they came as strings
         d.items.forEach(function(it){
           if(typeof it.serials==="string"&&it.serials.trim()){it.serials=it.serials.split(/[\n,]+/).map(function(s){return s.trim();}).filter(function(s){return s;});}
+          if(Array.isArray(it.serials)){it.serials=it.serials.map(function(s){return String(s).trim();});}
+          if(it.sn!=null&&it.sn!=="")it.sn=String(it.sn).trim();
           if(typeof it.serialLocations==="string"&&it.serialLocations.trim()){try{it.serialLocations=JSON.parse(it.serialLocations);}catch(e){delete it.serialLocations;}}
           if(typeof it.serialBoxes==="string"&&it.serialBoxes.trim()){try{it.serialBoxes=JSON.parse(it.serialBoxes);}catch(e){delete it.serialBoxes;}}
         });
@@ -508,7 +509,11 @@ function itemSerials(item){
 function isSerialized(item){return itemSerials(item).length>0;}
 function serialLoc(item,sn){
   // Location for a specific serial, falling back to the item's main location
-  if(item.serialLocations&&item.serialLocations[sn]&&String(item.serialLocations[sn]).trim())return item.serialLocations[sn];
+  var key=String(sn).trim();
+  if(item.serialLocations){
+    if(item.serialLocations[sn]!=null&&String(item.serialLocations[sn]).trim())return item.serialLocations[sn];
+    if(item.serialLocations[key]!=null&&String(item.serialLocations[key]).trim())return item.serialLocations[key];
+  }
   return item.location||"";
 }
 function setSerialLoc(item,sn,loc){
@@ -517,7 +522,11 @@ function setSerialLoc(item,sn,loc){
   else delete item.serialLocations[sn];
 }
 function serialBox(item,sn){
-  if(item.serialBoxes&&item.serialBoxes[sn]&&String(item.serialBoxes[sn]).trim())return item.serialBoxes[sn];
+  var key=String(sn).trim();
+  if(item.serialBoxes){
+    if(item.serialBoxes[sn]!=null&&String(item.serialBoxes[sn]).trim())return item.serialBoxes[sn];
+    if(item.serialBoxes[key]!=null&&String(item.serialBoxes[key]).trim())return item.serialBoxes[key];
+  }
   return item.floor||"";
 }
 function setSerialBox(item,sn,box){
@@ -1236,28 +1245,21 @@ function serialLocationSection(item){
   var sers=itemSerials(item);
   if(!sers.length)return "";
   var splitLoc=hasSplitLocations(item), splitBox=hasSplitBoxes(item);
-  // Only show the detailed table when serials differ by location OR box
   if(!splitLoc&&!splitBox)return "";
   var rows=sers.map(function(sn){
     var loc=serialLoc(item,sn)||"---";
     var box=serialBox(item,sn)||"---";
-    return '<tr>'+
-      '<td style="padding:7px 12px;font-family:monospace;font-size:12px;color:var(--tx);white-space:nowrap">'+esc(sn)+'</td>'+
-      '<td style="padding:7px 12px;font-size:12px"><span class="loctag">'+esc(loc)+'</span></td>'+
-      '<td style="padding:7px 12px;font-size:12px;color:var(--tx2)">'+esc(box)+'</td>'+
-      '</tr>';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid var(--bd)">'+
+      '<span style="font-family:monospace;font-size:12px;color:var(--tx);width:90px;flex:0 0 auto">'+esc(sn)+'</span>'+
+      '<span style="font-size:12px;color:var(--tx2);flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(loc)+'</span>'+
+      '<span style="font-size:12px;color:var(--tx);font-weight:600;flex:0 0 auto;background:var(--bg3);padding:2px 8px;border-radius:5px">Box '+esc(box)+'</span>'+
+      '</div>';
   }).join("");
   var note=[];
   if(splitLoc)note.push("locations");
   if(splitBox)note.push("boxes");
-  return '<div class="ds"><div class="dst">Serials &mdash; split across '+note.join(" &amp; ")+'</div>'+
-    '<div style="border:1px solid var(--bd);border-radius:9px;overflow:hidden;max-height:280px;overflow-y:auto">'+
-    '<table style="width:100%;border-collapse:collapse">'+
-    '<thead><tr style="background:var(--bg3)">'+
-    '<th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Serial</th>'+
-    '<th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Location</th>'+
-    '<th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Box</th>'+
-    '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+  return '<div class="ds"><div class="dst">Serials &mdash; split across '+note.join(" &amp; ")+' ('+sers.length+')</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:300px;overflow-y:auto;overflow-x:hidden">'+rows+'</div>'+
     '<div style="font-size:11px;color:var(--tx3);margin-top:7px">To change serial locations or boxes, use the Edit button.</div>'+
     '</div>';
 }
@@ -1295,8 +1297,8 @@ function detailHTML(item){
     (isSerialized(item)?
       dfield2(itemSerials(item).length>1?"S/N(s)":"S/N",'<span style="font-family:monospace;font-size:12px">'+itemSerials(item).map(esc).join(", ")+'</span>'+(hasSplitLocations(item)?' <span style="color:var(--amber);font-size:11px">\u2022 split</span>':'')):
       dfield2("S/N",'<span style="color:var(--tx3)">---</span>'))+
-    dfield2("Location",item.location?'<span class="loctag">'+esc(item.location)+'</span>'+(hasSplitLocations(item)?' <span style="font-size:10px;color:var(--tx3)">(default)</span>':''):'---')+
-    dfield2("Box",item.floor?esc(item.floor):'---')+
+    dfield2("Location",hasSplitLocations(item)?'<span style="color:var(--amber)">Multiple</span>':(item.location?'<span class="loctag">'+esc(item.location)+'</span>':'---'))+
+    dfield2("Box",hasSplitBoxes(item)?'<span style="color:var(--amber)">Multiple</span>':(item.floor?esc(item.floor):'---'))+
     dfield2("Expiry",ecell(item))+
     dfield2("Transactions",txs.length)+
     '</div>'+(item.notes?'<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx2)">Note: '+esc(item.notes)+'</div>':"")+
@@ -2017,10 +2019,10 @@ function renderBulkImport(){
   var COLW=[240,130,100,90,55,150,130,80,110,150];
   var SUBSYS_LIST=[];(function(){var seen={};S.items.forEach(function(it){var s=(it.subsys||"").trim();if(s&&!seen[s.toLowerCase()]){seen[s.toLowerCase()]=1;SUBSYS_LIST.push(s);}});(typeof EXTRA_SUBSYS!=="undefined"?EXTRA_SUBSYS:[]).forEach(function(s){if(s&&!seen[s.toLowerCase()]){seen[s.toLowerCase()]=1;SUBSYS_LIST.push(s);}});var SO=(typeof SUBSYS_ORDER!=="undefined"?SUBSYS_ORDER:[]);SUBSYS_LIST.sort(function(a,b){var ia=SO.indexOf(a),ib=SO.indexOf(b);if(ia<0&&ib<0)return a<b?-1:a>b?1:0;if(ia<0)return 1;if(ib<0)return -1;return ia-ib;});})();
   var LOC_LIST=[];(function(){var seen={};S.items.forEach(function(it){var l=(it.location||"").trim();if(l&&!seen[l.toLowerCase()]){seen[l.toLowerCase()]=1;LOC_LIST.push(l);}});(typeof EXTRA_LOCATIONS!=="undefined"?EXTRA_LOCATIONS:[]).forEach(function(l){if(l&&!seen[l.toLowerCase()]){seen[l.toLowerCase()]=1;LOC_LIST.push(l);}});LOC_LIST.sort();})();
-  var nr=S._bulkTableRows||20;
-  var thead='<tr style="background:var(--bg3)">'+COLS.map(function(col,ci){return'<th style="width:'+COLW[ci]+'px;min-width:'+COLW[ci]+'px;padding:5px 8px;font-size:10px;white-space:nowrap">'+col+'</th>';}).join('')+'</tr>';
+  var nr=S._bulkTableRows||40;
+  var thead='<tr style="background:var(--bg3)"><th style="width:34px;min-width:34px;padding:5px 4px;font-size:10px;text-align:center;color:var(--tx3)">#</th>'+COLS.map(function(col,ci){return'<th style="width:'+COLW[ci]+'px;min-width:'+COLW[ci]+'px;padding:5px 8px;font-size:10px;white-space:nowrap">'+col+'</th>';}).join('')+'</tr>';
   var tbody='';
-  for(var i=0;i<nr;i++){tbody+='<tr>'+COLS.map(function(col,ci){
+  for(var i=0;i<nr;i++){tbody+='<tr><td style="width:34px;min-width:34px;padding:2px 4px;text-align:center;font-size:11px;color:var(--tx3)">'+(i+1)+'</td>'+COLS.map(function(col,ci){
     if(ci===5){
       // Sub-system dropdown
       var opts='<option value="">--</option>';
@@ -2039,7 +2041,7 @@ function renderBulkImport(){
     var extra=(ci===8)?" onfocus='try{this.showPicker();}catch(e){}' onclick='try{this.showPicker();}catch(e){}'":"";
     return'<td style="padding:2px 3px;width:'+COLW[ci]+'px"><input type="'+itype+'" class="bulk-cell" data-row="'+i+'" data-col="'+ci+'"'+extra+' style="width:100%;height:26px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:3px;padding:0 6px;font-size:12px"></td>';
   }).join('')+'</tr>';}
-  return '<div class="card"><div class="ch"><div class="ctitle">Shipment Import</div><div style="display:flex;gap:8px"><button class="btn sm" id="btn-bulk-addrows">+ 10 rows</button><button class="btn bp" id="btn-bulk-import">Preview</button><button class="btn br sm" id="btn-bulk-clear">Clear</button></div></div>'
+  return '<div class="card"><div class="ch"><div class="ctitle">Shipment Import</div><div style="display:flex;gap:8px"><button class="btn sm" id="btn-bulk-addrows">+ 20 rows</button><button class="btn bp" id="btn-bulk-import">Preview</button><button class="btn br sm" id="btn-bulk-clear">Clear</button></div></div>'
     +'<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 6px;flex-wrap:wrap"><label style="font-size:12px;color:var(--tx2);font-weight:500">Shipment date:</label><input type="date" id="bulk-arrival-date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" style="width:140px"><span style="font-size:12px;color:var(--tx3)">Date recorded for all imported items.</span></div>'
     +'<p style="padding:0 18px 6px;font-size:12px;color:var(--tx2)">Paste from Excel (Ctrl+V). Arrow keys, Tab, Enter to navigate. Drag to select.</p>'
     +'<div style="overflow-x:auto;padding:8px 16px"><table id="bulk-table" style="border-collapse:collapse"><thead>'+thead+'</thead><tbody id="bulk-tbody">'+tbody+'</tbody></table></div>'
@@ -2100,7 +2102,7 @@ function parseBulkPaste(){
     } else {
       locCell='<span class="loctag">'+esc(r.location||"?")+'</span> <span style="font-size:10px;color:var(--tx3)">(kept)</span>';
     }
-    html+='<tr style="border-bottom:1px solid var(--bd)"><td style="padding:5px 8px;text-align:center"><input type="checkbox" class="bulk-skip-cb" data-idx="'+i+'" '+chk+'></td><td style="padding:5px 8px">'+esc(r.row.name)+'</td><td style="padding:5px 8px"><span class="pn">'+esc(r.row.pn)+'</span></td><td style="padding:5px 8px;text-align:center;font-weight:600">'+r.row.qty+'</td><td style="padding:5px 8px">'+locCell+'</td><td style="padding:5px 8px"><span style="color:'+sc+';font-weight:600">'+sl+'</span>'+(r.reason?'<div style="font-size:10px;color:var(--amber);margin:3px 0">'+r.reason+'</div>':"")+((r.status==="cpn"||r.status==="cname")?'<select class="bulk-decision" data-idx="'+i+'" style="width:100%;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px;margin-top:2px"><option value="skip">Skip this row</option><option value="merge">Same item &mdash; merge into existing</option><option value="new">Different item &mdash; add as new</option></select>':"")+'</td></tr>';
+    html+='<tr style="border-bottom:1px solid var(--bd)"><td style="padding:5px 8px;text-align:center">'+((r.status==="cpn"||r.status==="cname")?'<span style="color:var(--tx3);font-size:11px">\u2193</span>':'<input type="checkbox" class="bulk-skip-cb" data-idx="'+i+'" '+chk+'>')+'</td><td style="padding:5px 8px">'+esc(r.row.name)+'</td><td style="padding:5px 8px"><span class="pn">'+esc(r.row.pn)+'</span></td><td style="padding:5px 8px;text-align:center;font-weight:600">'+r.row.qty+'</td><td style="padding:5px 8px">'+locCell+'</td><td style="padding:5px 8px"><span style="color:'+sc+';font-weight:600">'+sl+'</span>'+(r.reason?'<div style="font-size:10px;color:var(--amber);margin:3px 0">'+r.reason+'</div>':"")+((r.status==="cpn"||r.status==="cname")?'<select class="bulk-decision" data-idx="'+i+'" style="width:100%;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px;margin-top:2px"><option value="skip">Skip this row</option><option value="merge">Same item &mdash; merge into existing</option><option value="new">Different item &mdash; add as new</option></select>':"")+'</td></tr>';
   });
   html+='</tbody></table></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn bp" id="btn-bulk-confirm">Import checked rows</button><button class="btn" id="btn-bulk-back">Back</button></div></div>';
   document.getElementById("bulk-preview").innerHTML=html;
@@ -2171,8 +2173,22 @@ function executeBulkImport(){
     }
     if(skip[i]){sk++;return;}
     if(r.status==="exact"){
-      r.match.qty+=r.row.qty;up++;
-      importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:r.row.qty,remaining:r.match.qty});
+      // Same P/N + name: capture serial + box + location if provided, else just add qty
+      var eSn=(r.row.sn||"").trim();
+      var eLoc=(r.row.location||"").trim();
+      var eBox=(r.row.floor||"").trim();
+      if(eSn){
+        if(!Array.isArray(r.match.serials))r.match.serials=r.match.sn?[String(r.match.sn).trim()]:[];
+        if(r.match.serials.indexOf(eSn)<0)r.match.serials.push(eSn);
+        if(!r.match.sn)r.match.sn=eSn;
+        if(eLoc){if(!r.match.serialLocations)r.match.serialLocations={};r.match.serialLocations[eSn]=eLoc;}
+        if(eBox){if(!r.match.serialBoxes)r.match.serialBoxes={};r.match.serialBoxes[eSn]=eBox;}
+        r.match.qty=r.match.serials.length;
+      } else {
+        r.match.qty=(parseInt(r.match.qty)||0)+(parseInt(r.row.qty)||0);
+      }
+      up++;
+      importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:(eSn?1:(parseInt(r.row.qty)||0)),remaining:r.match.qty});
     }
     else{
       var loc="Unknown";
@@ -2389,7 +2405,7 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-bulk-confirm"){executeBulkImport();return;}
   if(t.id==="btn-bulk-back"){document.getElementById("bulk-preview").innerHTML="";return;}
   if(t.id==="btn-bulk-clear"){document.querySelectorAll(".bulk-cell").forEach(function(inp){inp.value="";});document.getElementById("bulk-preview").innerHTML="";return;}
-  if(t.id==="btn-bulk-addrows"){S._bulkTableRows=(S._bulkTableRows||20)+10;renderPage();return;}
+  if(t.id==="btn-bulk-addrows"){S._bulkTableRows=(S._bulkTableRows||40)+20;renderPage();return;}
   if(t.id==="btn-confirm-ship"){var rec3=S.rma.find(function(r){return r.id===S._pendingShipId;});var dt=(document.getElementById("ship-date")||{}).value;if(!dt){alert("Select a date.");return;}if(rec3){rec3.status="shipped";rec3.dateShipped=dt;rec3.location="Israel";save();closeModal();renderAll();}return;}
   if(t.id==="btn-confirm-recv"){
   var rec4=S.rma.find(function(r){return r.id===S._pendingRecvId;});
@@ -2688,6 +2704,9 @@ function checkDeepLink() {
 }
 
 console.log("%c OSPREY IMS build v-BOX-3 (Serial/Location/Box table) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD BOX-FIX-FINAL LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 BOX-FIX";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+
 </script>
 </body>
 </html>
