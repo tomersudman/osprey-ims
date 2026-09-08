@@ -2020,7 +2020,9 @@ function renderBulkImport(){
   var SUBSYS_LIST=[];(function(){var seen={};S.items.forEach(function(it){var s=(it.subsys||"").trim();if(s&&!seen[s.toLowerCase()]){seen[s.toLowerCase()]=1;SUBSYS_LIST.push(s);}});(typeof EXTRA_SUBSYS!=="undefined"?EXTRA_SUBSYS:[]).forEach(function(s){if(s&&!seen[s.toLowerCase()]){seen[s.toLowerCase()]=1;SUBSYS_LIST.push(s);}});var SO=(typeof SUBSYS_ORDER!=="undefined"?SUBSYS_ORDER:[]);SUBSYS_LIST.sort(function(a,b){var ia=SO.indexOf(a),ib=SO.indexOf(b);if(ia<0&&ib<0)return a<b?-1:a>b?1:0;if(ia<0)return 1;if(ib<0)return -1;return ia-ib;});})();
   var LOC_LIST=[];(function(){var seen={};S.items.forEach(function(it){var l=(it.location||"").trim();if(l&&!seen[l.toLowerCase()]){seen[l.toLowerCase()]=1;LOC_LIST.push(l);}});(typeof EXTRA_LOCATIONS!=="undefined"?EXTRA_LOCATIONS:[]).forEach(function(l){if(l&&!seen[l.toLowerCase()]){seen[l.toLowerCase()]=1;LOC_LIST.push(l);}});LOC_LIST.sort();})();
   var nr=S._bulkTableRows||40;
-  var thead='<tr style="background:var(--bg3)"><th style="width:34px;min-width:34px;padding:5px 4px;font-size:10px;text-align:center;color:var(--tx3)">#</th>'+COLS.map(function(col,ci){return'<th style="width:'+COLW[ci]+'px;min-width:'+COLW[ci]+'px;padding:5px 8px;font-size:10px;white-space:nowrap">'+col+'</th>';}).join('')+'</tr>';
+  var thead='<tr style="background:var(--bg3)"><th style="width:34px;min-width:34px;padding:5px 4px;font-size:10px;text-align:center;color:var(--tx3)">#</th>'+COLS.map(function(col,ci){
+    var fill=(ci===5||ci===6)?' <button class="bulk-filldown" data-col="'+ci+'" title="Copy the first filled value in this column down to all rows" style="cursor:pointer;border:1px solid var(--bd2);background:var(--bg);color:var(--blue2);border-radius:4px;font-size:10px;padding:1px 5px;margin-left:4px">\u2913 fill</button>':'';
+    return'<th style="width:'+COLW[ci]+'px;min-width:'+COLW[ci]+'px;padding:5px 8px;font-size:10px;white-space:nowrap">'+col+fill+'</th>';}).join('')+'</tr>';
   var tbody='';
   for(var i=0;i<nr;i++){tbody+='<tr><td style="width:34px;min-width:34px;padding:2px 4px;text-align:center;font-size:11px;color:var(--tx3)">'+(i+1)+'</td>'+COLS.map(function(col,ci){
     if(ci===5){
@@ -2059,7 +2061,7 @@ function parseBulkPaste(){
     var v=[];
     cells.forEach(function(el){var col=parseInt(el.getAttribute("data-col"));v[col]=(el.value||"").trim();});
     for(var k=0;k<10;k++){if(v[k]===undefined)v[k]="";}
-    if(v.some(function(x){return x;}))rows.push({name:v[0]||"",pn:v[1]||"",alt_pn:v[2]||"",sn:v[3]||"",qty:parseInt(v[4])||1,qtyBlank:!(v[4]&&String(v[4]).trim()),subsys:v[5]||"",location:v[6]||"",floor:v[7]||"",expiry:v[8]||"",notes:v[9]||"",type:"",smr:""});
+    if((v[0]&&v[0].trim())||(v[1]&&v[1].trim()))rows.push({name:v[0]||"",pn:v[1]||"",alt_pn:v[2]||"",sn:v[3]||"",qty:parseInt(v[4])||1,qtyBlank:!(v[4]&&String(v[4]).trim()),subsys:v[5]||"",location:v[6]||"",floor:v[7]||"",expiry:v[8]||"",notes:v[9]||"",type:"",smr:""});
   });
   if(!rows.length){alert("No data entered.");return;}
   var res=rows.map(function(row){
@@ -2079,7 +2081,8 @@ function parseBulkPaste(){
   });
   _bulkMatches=res;
   var nN=res.filter(function(r){return r.status==="new";}).length,nU=res.filter(function(r){return r.status==="exact";}).length,nC=res.filter(function(r){return r.status!=="new"&&r.status!=="exact";}).length;
-  var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px"><div style="font-size:13px;margin-bottom:12px"><b>'+res.length+' rows:</b> <span style="color:var(--green)">'+nN+' new</span> &nbsp;<span style="color:var(--blue2)">'+nU+' update</span> &nbsp;<span style="color:var(--amber)">'+nC+' review</span></div>'
+  var pill=function(id,color,label){return '<button class="bulk-filter-pill" data-filter="'+id+'" style="cursor:pointer;border:1px solid '+color+';background:transparent;color:'+color+';border-radius:12px;font-size:12px;padding:3px 12px;margin-right:6px;font-weight:600">'+label+'</button>';};
+  var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px"><div style="font-size:13px;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px"><b style="margin-right:8px">'+res.length+' rows:</b>'+pill("all","var(--tx2)","All ("+res.length+")")+pill("new","var(--green)",nN+" new")+pill("exact","var(--blue2)",nU+" update")+pill("review","var(--amber)",nC+" review")+'<span style="font-size:11px;color:var(--tx3);margin-left:6px">(click to filter)</span></div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg4)"><th style="padding:5px 8px">Include</th><th>Description</th><th>Part No.</th><th>Qty</th><th>Location</th><th>Status</th></tr></thead><tbody>';
   res.forEach(function(r,i){
     var qtyMissing=r.row.qtyBlank;
@@ -2102,7 +2105,7 @@ function parseBulkPaste(){
     } else {
       locCell='<span class="loctag">'+esc(r.location||"?")+'</span> <span style="font-size:10px;color:var(--tx3)">(kept)</span>';
     }
-    html+='<tr style="border-bottom:1px solid var(--bd)"><td style="padding:5px 8px;text-align:center">'+((r.status==="cpn"||r.status==="cname")?'<span style="color:var(--tx3);font-size:11px">\u2193</span>':'<input type="checkbox" class="bulk-skip-cb" data-idx="'+i+'" '+chk+'>')+'</td><td style="padding:5px 8px">'+esc(r.row.name)+'</td><td style="padding:5px 8px"><span class="pn">'+esc(r.row.pn)+'</span></td><td style="padding:5px 8px;text-align:center;font-weight:600">'+r.row.qty+'</td><td style="padding:5px 8px">'+locCell+'</td><td style="padding:5px 8px"><span style="color:'+sc+';font-weight:600">'+sl+'</span>'+(r.reason?'<div style="font-size:10px;color:var(--amber);margin:3px 0">'+r.reason+'</div>':"")+((r.status==="cpn"||r.status==="cname")?'<select class="bulk-decision" data-idx="'+i+'" style="width:100%;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px;margin-top:2px"><option value="skip">Skip this row</option><option value="merge">Same item &mdash; merge into existing</option><option value="new">Different item &mdash; add as new</option></select>':"")+'</td></tr>';
+    html+='<tr class="bulk-preview-row" data-status="'+r.status+'" style="border-bottom:1px solid var(--bd)"><td style="padding:5px 8px;text-align:center">'+((r.status==="cpn"||r.status==="cname")?'<span style="color:var(--tx3);font-size:11px">\u2193</span>':'<input type="checkbox" class="bulk-skip-cb" data-idx="'+i+'" '+chk+'>')+'</td><td style="padding:5px 8px">'+esc(r.row.name)+'</td><td style="padding:5px 8px"><span class="pn">'+esc(r.row.pn)+'</span></td><td style="padding:5px 8px;text-align:center;font-weight:600">'+r.row.qty+'</td><td style="padding:5px 8px">'+locCell+'</td><td style="padding:5px 8px"><span style="color:'+sc+';font-weight:600">'+sl+'</span>'+(r.reason?'<div style="font-size:10px;color:var(--amber);margin:3px 0">'+r.reason+'</div>':"")+((r.status==="cpn"||r.status==="cname")?'<select class="bulk-decision" data-idx="'+i+'" style="width:100%;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px;margin-top:2px"><option value="skip">Skip this row</option><option value="merge">Same item &mdash; merge into existing</option><option value="new">Different item &mdash; add as new</option></select>':"")+'</td></tr>';
   });
   html+='</tbody></table></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn bp" id="btn-bulk-confirm">Import checked rows</button><button class="btn" id="btn-bulk-back">Back</button></div></div>';
   document.getElementById("bulk-preview").innerHTML=html;
@@ -2405,6 +2408,45 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-bulk-confirm"){executeBulkImport();return;}
   if(t.id==="btn-bulk-back"){document.getElementById("bulk-preview").innerHTML="";return;}
   if(t.id==="btn-bulk-clear"){document.querySelectorAll(".bulk-cell").forEach(function(inp){inp.value="";});document.getElementById("bulk-preview").innerHTML="";return;}
+  if(t.classList&&t.classList.contains("bulk-filter-pill")){
+    var flt=t.getAttribute("data-filter");
+    document.querySelectorAll(".bulk-preview-row").forEach(function(tr){
+      var st=tr.getAttribute("data-status");
+      var show=(flt==="all")||(flt==="new"&&st==="new")||(flt==="exact"&&st==="exact")||(flt==="review"&&st!=="new"&&st!=="exact");
+      tr.style.display=show?"":"none";
+    });
+    document.querySelectorAll(".bulk-filter-pill").forEach(function(b){b.style.opacity=(b===t?"1":"0.5");});
+    return;
+  }
+  if(t.classList&&t.classList.contains("bulk-filldown")){
+    var fcol=t.getAttribute("data-col");
+    var cells=Array.prototype.slice.call(document.querySelectorAll('.bulk-cell[data-col="'+fcol+'"]'));
+    // Find the first non-empty value in this column
+    var val="";
+    for(var fi=0;fi<cells.length;fi++){if(cells[fi].value&&cells[fi].value.trim()&&cells[fi].value!=="__other__"){val=cells[fi].value;break;}}
+    if(!val){alert("Set a value in the first row of this column, then click fill.");return;}
+    // Helper: does a given row have real data (Item Name in col 0 OR P/N in col 1)?
+    var rowHasData=function(rowIdx){
+      var nameCell=document.querySelector('.bulk-cell[data-row="'+rowIdx+'"][data-col="0"]');
+      var pnCell=document.querySelector('.bulk-cell[data-row="'+rowIdx+'"][data-col="1"]');
+      var nm=nameCell&&nameCell.value?nameCell.value.trim():"";
+      var pn=pnCell&&pnCell.value?pnCell.value.trim():"";
+      return !!(nm||pn);
+    };
+    var filled=0;
+    cells.forEach(function(cell){
+      var rowIdx=cell.getAttribute("data-row");
+      // ONLY fill rows that have an item name or P/N (skip empty rows)
+      if(!rowHasData(rowIdx))return;
+      if(cell.tagName==="SELECT"){
+        var found=false;for(var o=0;o<cell.options.length;o++){if(cell.options[o].value===val){found=true;break;}}
+        if(!found){var opt=document.createElement("option");opt.value=val;opt.text=val;cell.insertBefore(opt,cell.firstChild);}
+      }
+      cell.value=val;filled++;
+    });
+    if(!filled)alert("No rows with an item to fill. Enter item names/P/Ns first, then fill.");
+    return;
+  }
   if(t.id==="btn-bulk-addrows"){S._bulkTableRows=(S._bulkTableRows||40)+20;renderPage();return;}
   if(t.id==="btn-confirm-ship"){var rec3=S.rma.find(function(r){return r.id===S._pendingShipId;});var dt=(document.getElementById("ship-date")||{}).value;if(!dt){alert("Select a date.");return;}if(rec3){rec3.status="shipped";rec3.dateShipped=dt;rec3.location="Israel";save();closeModal();renderAll();}return;}
   if(t.id==="btn-confirm-recv"){
