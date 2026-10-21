@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-LOTS</title>
+<title>OSPREY IMS v-LOTS-4</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1445,6 +1445,7 @@ function detailHTML(item){
         notes="Shipment import"+(t.invoice?" \u2013 invoice "+esc(t.invoice):"")+" \u2013 "+esc(fd(t.date));
       } else {
         notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
+        if(t.invoice)notes+=" \u2013 invoice "+esc(t.invoice);
       }
       tl+='<div class="tlr"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span></div>';
     });
@@ -1479,19 +1480,65 @@ function detailHTML(item){
 }
 
 // ── INVENTORY PAGE ────────────────────────────────────────────────────────────
+function setInvoiceForShipment(){
+  var cur=S.fNoInvoice?"":(S.fInvoice||"");
+  var newInv=prompt("Invoice number to assign to this shipment"+(S.fShipDate?" ("+fdate(S.fShipDate)+")":"")+":", cur);
+  if(newInv==null)return;
+  newInv=newInv.trim();
+  var invQ=(S.fInvoice||"").trim().toLowerCase();
+  var match=function(d,inv){
+    var okD=!S.fShipDate||(d===S.fShipDate);
+    var okI;
+    if(S.fNoInvoice)okI=!inv||String(inv).trim()==="";
+    else okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);
+    return okD&&okI;
+  };
+  var n=0;
+  S.items.forEach(function(item){
+    var sers=itemSerials(item);
+    if(sers.length){
+      sers.forEach(function(sn){
+        if(match(rawSerialShip(item,sn),rawSerialInv(item,sn))){
+          if(!item.serialInvoice)item.serialInvoice={};
+          var k=String(sn).trim();
+          if(newInv)item.serialInvoice[k]=newInv; else delete item.serialInvoice[k];
+          n++;
+        }
+      });
+    } else if(Array.isArray(item.lots)&&item.lots.length){
+      item.lots.forEach(function(L){if(match(L.shipDate||"",L.invoice||"")){L.invoice=newInv;n++;}});
+    } else {
+      if(match(item.shipDate||"",item.invoice||"")){item.invoice=newInv;n++;}
+    }
+  });
+  S.tx.forEach(function(t){if(t.type==="receive"&&match(t.date||"",t.invoice||"")){t.invoice=newInv;}});
+  // move the filter to follow the shipment
+  if(newInv){S.fNoInvoice=false;S.fInvoice=newInv;} 
+  save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}
+  renderPage();
+  alert("Assigned invoice "+(newInv||"(none)")+" to "+n+" line(s) in this shipment.");
+}
 function renderInventory(){
   var items=filt();
-  var shipFilter=!!(S.fShipDate||(S.fInvoice&&S.fInvoice.trim()));
+  var shipFilter=!!(S.fShipDate||(S.fInvoice&&S.fInvoice.trim())||S.fNoInvoice);
   var shipCount=0;
-  var invMap={};
+  var invMap={}, noInvDates={};
   S.items.forEach(function(it){
-    if(it.serialInvoice)Object.keys(it.serialInvoice).forEach(function(sn){var iv=it.serialInvoice[sn];if(iv&&invMap[iv]==null)invMap[iv]=(it.serialShipDate&&it.serialShipDate[sn])||"";});
-    if(it.invoice&&invMap[it.invoice]==null)invMap[it.invoice]=it.shipDate||"";
+    var sers=itemSerials(it);
+    if(sers.length){
+      sers.forEach(function(sn){var iv=rawSerialInv(it,sn);var d=rawSerialShip(it,sn);if(iv){if(invMap[iv]==null)invMap[iv]=d||"";}else if(d){noInvDates[d]=1;}});
+    } else if(Array.isArray(it.lots)&&it.lots.length){
+      it.lots.forEach(function(L){if(L.invoice){if(invMap[L.invoice]==null)invMap[L.invoice]=L.shipDate||"";}else if(L.shipDate){noInvDates[L.shipDate]=1;}});
+    } else {
+      if(it.invoice){if(invMap[it.invoice]==null)invMap[it.invoice]=it.shipDate||"";}else if(it.shipDate){noInvDates[it.shipDate]=1;}
+    }
   });
-  S.tx.forEach(function(t){if(t.type==="receive"&&t.invoice&&invMap[t.invoice]==null)invMap[t.invoice]=t.date||"";});
+  S.tx.forEach(function(t){if(t.type==="receive"){if(t.invoice){if(invMap[t.invoice]==null)invMap[t.invoice]=t.date||"";}else if(t.date){noInvDates[t.date]=1;}}});
   var invList=Object.keys(invMap).sort(function(a,b){var da=invMap[a]||"",db=invMap[b]||"";return da<db?1:da>db?-1:0;});
-  var invOpts='<option value="">All invoices</option>';
-  invList.forEach(function(iv){invOpts+='<option value="'+esc(iv)+'"'+(S.fInvoice===iv?" selected":"")+'>'+esc(iv)+(invMap[iv]?"  \u00b7  "+esc(fdate(invMap[iv])):"")+'</option>';});
+  var noInvList=Object.keys(noInvDates).sort(function(a,b){return a<b?1:a>b?-1:0;});
+  var invOpts='<option value="">All shipments</option>';
+  invList.forEach(function(iv){invOpts+='<option value="'+esc(iv)+'"'+((!S.fNoInvoice&&S.fInvoice===iv)?" selected":"")+'>'+esc(iv)+(invMap[iv]?"  \u00b7  "+esc(fdate(invMap[iv])):"")+'</option>';});
+  noInvList.forEach(function(d){invOpts+='<option value="__noinv__'+esc(d)+'"'+((S.fNoInvoice&&S.fShipDate===d)?" selected":"")+'>No invoice  \u00b7  '+esc(fdate(d))+'</option>';});
   var locs=uniq("location"),subs=uniq("subsys");
   var locO='<option value="">All locations</option>';
   locs.forEach(function(l){locO+='<option value="'+esc(l)+'"'+(S.fLoc===l?" selected":"")+'>'+esc(l)+'</option>';});
@@ -1536,7 +1583,9 @@ function renderInventory(){
     var entries=[];var seen={};
     var matchMeta=function(d,inv){
       var okD=!S.fShipDate||(d===S.fShipDate);
-      var okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);
+      var okI;
+      if(S.fNoInvoice){okI=!inv||String(inv).trim()==="";}
+      else{okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);}
       return okD&&okI;
     };
     S.items.forEach(function(item){
@@ -1606,6 +1655,7 @@ function renderInventory(){
     '<input id="fShipDate" type="date" value="'+esc(S.fShipDate||"")+'" title="Filter by shipment date" style="width:140px"'+(S.fShipDate?' class="bg"':'')+'>'+
     '<select id="fInvoice" style="width:180px" title="Filter by invoice">'+invOpts+'</select>'+
     (shipFilter?'<button class="btn sm" id="btn-clear-ship" style="border-color:var(--amber);color:var(--amber)">Clear shipment</button>':'')+
+    ((shipFilter&&canEdit())?'<button class="btn sm" id="btn-set-invoice" style="border-color:var(--green);color:var(--green)">Set invoice #</button>':'')+
     '<button class="btn bg sm" id="btn-xcsv">Excel</button>'+
     '<button class="btn sm" id="btn-bulk-labels">Download Labels</button>'+
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
@@ -1740,7 +1790,15 @@ function buildTxModal(id,type){
         '<div class="ff"><label class="fl">Location for this serial (optional)</label><input id="m-sn-loc" type="text" placeholder="'+esc(item.location||"e.g. Storage 1")+'" style="width:100%"></div>';
     }
   }
+  var lotField="";
+  var lotted=(!isLRU&&isOut&&Array.isArray(item.lots)&&item.lots.length>1);
+  if(lotted){
+    var lopts='';
+    item.lots.forEach(function(L,li){lopts+='<option value="'+li+'" data-max="'+(parseInt(L.qty)||0)+'">'+esc(L.location||"?")+(L.box?' \u00b7 box '+esc(L.box):'')+(L.expiry?' \u00b7 exp '+esc(fdate(L.expiry)):'')+'  (qty '+(parseInt(L.qty)||0)+')</option>';});
+    lotField='<div class="ff"><label class="fl">Draw from which batch / location *</label><select id="m-lot" style="width:100%" onchange="var o=this.options[this.selectedIndex];var q=document.getElementById(\'m-qty\');if(q){var mx=o.getAttribute(\'data-max\');q.max=mx;if((parseInt(q.value)||0)>parseInt(mx))q.value=mx;}">'+lopts+'</select></div>';
+  }
   var qtyMax=isLRU?1:(isOut?item.qty:"");
+  if(lotted)qtyMax=parseInt(item.lots[0].qty)||0;
   return '<div class="mh"><div class="mt" style="color:'+(isOut?"var(--red)":"var(--green)")+'">'+(isOut?"Draw from inventory":"Receive into inventory")+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb"><div class="ibox">'+
     '<div style="font-weight:500;margin-bottom:3px">'+esc(item.name)+'</div>'+
@@ -1749,6 +1807,7 @@ function buildTxModal(id,type){
     '<div style="margin-top:8px">Stock: '+scell(item)+'</div></div>'+
     '<div class="fg">'+
     serialField+
+    lotField+
     '<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="1"'+(qtyMax?' max="'+qtyMax+'"':'')+' value="1"'+(isLRU?' readonly':'')+' style="width:100%"></div>'+
     '<div><label class="fl">Date *</label><input id="m-date" type="date" value="'+tod()+'" style="width:100%"></div>'+
     '<div class="ff"><label class="fl">Person *</label><input id="m-person" type="text" placeholder="Full name" style="width:100%" value="'+(S._fullName||(S.currentUser?esc(S.currentUser.name):''))+'"></div>'+
@@ -1827,6 +1886,7 @@ function buildItemModal(id){
     '<div><label class="fl">Location *</label><select id="m-location" style="width:100%" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.selectedIndex=0;}}"><option value="">-- select --</option>'+locO+'<option value="__other__">Other (type new)...</option></select></div>'+
     '<div><label class="fl">Box</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
+    (!isEdit?'<div><label class="fl">Shipment date</label><input id="m-shipdate" type="date" value="'+tod()+'" style="width:100%"></div><div><label class="fl">Invoice #</label><input id="m-invoice" type="text" placeholder="optional" style="width:100%"></div>':'')+
     (!isEdit?'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="'+esc(item.qty!=null?item.qty:1)+'" style="width:100%"></div>')+
     '<div class="ff"><label class="fl">Comments</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'))+
     '</div></div>'+
@@ -1860,6 +1920,8 @@ function submitTx(){
   var item=S.items.find(function(i){return i.id===S.modal.id;});
   if(isOut&&qty>item.qty){alert("Only "+item.qty+" unit(s) in stock.");return;}
   var isSer=isSerialized(item);
+  var lotIdx=-1, drawLocLabel="";
+  if(!isSer&&isOut){var lotEl=document.getElementById("m-lot");if(lotEl&&lotEl.value!==""){lotIdx=parseInt(lotEl.value);var LL=(item.lots||[])[lotIdx];if(LL){if(qty>(parseInt(LL.qty)||0)){alert("Only "+(parseInt(LL.qty)||0)+" unit(s) in that location ("+(LL.location||"?")+").");return;}drawLocLabel=LL.location||"";}}}
   var snPicked="";
   if(isSer){
     var snEl=document.getElementById("m-sn");
@@ -1887,8 +1949,12 @@ function submitTx(){
   item.qty=isOut?item.qty-qty:item.qty+qty;
   if(!isSer&&Array.isArray(item.lots)&&item.lots.length){
     if(isOut){
-      var remain=qty;
-      for(var li=0;li<item.lots.length&&remain>0;li++){var lq=parseInt(item.lots[li].qty)||0;var take=Math.min(lq,remain);item.lots[li].qty=lq-take;remain-=take;}
+      if(lotIdx>=0&&item.lots[lotIdx]){
+        var lq0=parseInt(item.lots[lotIdx].qty)||0;item.lots[lotIdx].qty=Math.max(0,lq0-qty);
+      } else {
+        var remain=qty;
+        for(var li=0;li<item.lots.length&&remain>0;li++){var lq=parseInt(item.lots[li].qty)||0;var take=Math.min(lq,remain);item.lots[li].qty=lq-take;remain-=take;}
+      }
       item.lots=item.lots.filter(function(L){return (parseInt(L.qty)||0)>0;});
     } else {
       item.lots[0].qty=(parseInt(item.lots[0].qty)||0)+qty;
@@ -1898,7 +1964,7 @@ function submitTx(){
       delete item.lots;
     }
   }
-  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",ts:Date.now()};
+  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",ts:Date.now()};
   S.tx.push(newTx);
   saveAndPushTx(newTx);
   pushItem(item); // also update item qty in sheet
@@ -1996,14 +2062,23 @@ function submitItem(id){
       }
     }
     var qty=parseInt(gv("m-qty"))||0;
+    var nDate=document.getElementById("m-shipdate")?(gv("m-shipdate")||tod()):tod();
+    var nInv=document.getElementById("m-invoice")?gv("m-invoice").trim():"";
     item={id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
       name:name,subsys:gv("m-subsys"),type:"",smr:"",
       sn:gv("m-sn"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),
       notes:gv("m-notes"),qty:qty,initialQty:qty};
+    if(item.sn&&item.sn.trim()){stampShipMeta(item,item.sn.trim(),nDate,nInv);}
+    else{if(nDate)item.shipDate=nDate;if(nInv)item.invoice=nInv;}
     S.items.push(item);
     if(!S._newItems)S._newItems=[];S._newItems.push(item.id);
+    if((parseInt(item.qty)||0)>0){
+      var _nt={id:String(Date.now()+3),itemId:item.id,itemName:item.name,type:"receive",qty:parseInt(item.qty)||0,date:(item.shipDate||rawSerialShip(item,item.sn)||tod()),person:S._fullName||(S.currentUser?S.currentUser.name:"Manual add"),purpose:"New item added"+(item.sn?" [S/N: "+item.sn+"]":""),reasonCode:"Add",remaining:item.qty,sn:item.sn||"",invoice:(item.invoice||rawSerialInv(item,item.sn)||""),ts:Date.now()};
+      S.tx.push(_nt);S._pendingAddTx=_nt;
+    }
   }
   saveAndPushItem(item);
+  if(S._pendingAddTx){pushTx(S._pendingAddTx);S._pendingAddTx=null;}
   closeModal(); renderAll();
 }
 function showDuplicatePNDialog(existing, pending){
@@ -2023,6 +2098,8 @@ function showDuplicatePNDialog(existing, pending){
     '<div><label class="fl">New quantity will be</label><input id="dup-newtotal" type="text" value="'+((existing.qty||0)+(pending.qty||1))+'" disabled style="width:100%;opacity:.7"></div>'+
     '<div><label class="fl">Serial number (optional)</label><input id="dup-sn" type="text" value="'+esc(pending.sn||"")+'" placeholder="S/N of the unit(s) added" style="width:100%"></div>'+
     '<div><label class="fl">Location for this serial</label><input id="dup-loc" type="text" value="'+esc(pending.location||existing.location||"")+'" list="dup-locdl" style="width:100%"><datalist id="dup-locdl">'+locO+'</datalist></div>'+
+    '<div><label class="fl">Shipment date *</label><input id="dup-date" type="date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" style="width:100%"></div>'+
+    '<div><label class="fl">Invoice #</label><input id="dup-invoice" type="text" placeholder="e.g. INV-2026-0142 (optional)" style="width:100%"></div>'+
     '</div>'+
     '<div style="font-size:11px;color:var(--tx3);margin-top:8px">Leave the serial blank if these units aren\'t serialized. The location can be the same as the existing one or different.</div>'+
     '</div>'+
@@ -2052,17 +2129,22 @@ function mergeIntoExisting(id, pending){
   var newSn=(document.getElementById("dup-sn").value||"").trim();
   var newLoc=(document.getElementById("dup-loc").value||"").trim();
   if(addQty<1){alert("Enter a quantity to add.");return;}
-  item.qty=(item.qty||0)+addQty;
-  // Add the serial if provided
+  var dDate=(document.getElementById("dup-date")||{}).value||tod();
+  var dInv=((document.getElementById("dup-invoice")||{}).value||"").trim();
   if(newSn){
     if(!Array.isArray(item.serials))item.serials=item.sn?[item.sn]:[];
     if(item.serials.indexOf(newSn)<0)item.serials.push(newSn);
     if(!item.sn)item.sn=newSn;
     if(newLoc)setSerialLoc(item,newSn,newLoc);
+    stampShipMeta(item,newSn,dDate,dInv);
+    item.qty=(item.qty||0)+addQty;
+  } else {
+    addNonSerialBatch(item,addQty,newLoc||item.location,item.floor,item.expiry,"",dDate,dInv);
   }
-  // Log a receive transaction
-  S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:"receive",qty:addQty,date:tod(),person:S._fullName||"Manual add",purpose:"Added to existing P/N"+(newSn?" [S/N: "+newSn+"]":""),reasonCode:"Restock",remaining:item.qty,ts:Date.now()});
+  var tx={id:String(Date.now()),itemId:item.id,itemName:item.name,type:"receive",qty:addQty,date:dDate,person:S._fullName||"Manual add",purpose:"Added to existing P/N"+(newSn?" [S/N: "+newSn+"]":"")+(newLoc?" @ "+newLoc:""),reasonCode:"Restock",remaining:item.qty,sn:newSn||"",invoice:dInv,ts:Date.now()};
+  S.tx.push(tx);
   saveAndPushItem(item);
+  pushTx(tx);
   closeModal();renderAll();
 }
 
@@ -2386,7 +2468,9 @@ function parseBulkPaste(){
   _bulkMatches=res;
   var nN=res.filter(function(r){return r.status==="new";}).length,nU=res.filter(function(r){return r.status==="exact";}).length,nC=res.filter(function(r){return r.status!=="new"&&r.status!=="exact";}).length;
   var pill=function(id,color,label){return '<button class="bulk-filter-pill" data-filter="'+id+'" style="cursor:pointer;border:1px solid '+color+';background:transparent;color:'+color+';border-radius:12px;font-size:12px;padding:3px 12px;margin-right:6px;font-weight:600">'+label+'</button>';};
-  var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px"><div style="font-size:13px;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px"><b style="margin-right:8px">'+res.length+' rows:</b>'+pill("all","var(--tx2)","All ("+res.length+")")+pill("new","var(--green)",nN+" new")+pill("exact","var(--blue2)",nU+" update")+pill("review","var(--amber)",nC+" review")+'<span style="font-size:11px;color:var(--tx3);margin-left:6px">(click to filter)</span></div>'
+  var _invVal=((document.getElementById("bulk-invoice")||{}).value||"").trim();
+  var _invWarn=_invVal?'':'<div style="background:var(--abg);border:1px solid var(--amber);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:var(--amber)">\u26A0 No invoice number entered. You can still import \u2014 these items will be filed under \u201cNo invoice\u201d for this shipment date, and you can assign an invoice number to the whole shipment later from the Inventory filter.</div>';
+  var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px">'+_invWarn+'<div style="font-size:13px;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px"><b style="margin-right:8px">'+res.length+' rows:</b>'+pill("all","var(--tx2)","All ("+res.length+")")+pill("new","var(--green)",nN+" new")+pill("exact","var(--blue2)",nU+" update")+pill("review","var(--amber)",nC+" review")+'<span style="font-size:11px;color:var(--tx3);margin-left:6px">(click to filter)</span></div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg4)"><th style="padding:5px 8px">Include</th><th>Description</th><th>Part No.</th><th>Qty</th><th>Location</th><th>Status</th></tr></thead><tbody>';
   res.forEach(function(r,i){
     var qtyMissing=r.row.qtyBlank;
@@ -2648,8 +2732,9 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-logout"){ if(confirm("Log out?")) doLogout(); return; }
 
   // --- static button IDs in inventory toolbar ---
-  if(t.id==="btn-clear"){S.search="";S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.fShipDate="";S.fInvoice="";S._statFilter=null;renderPage();return;}
-  if(t.id==="btn-clear-ship"){S.fShipDate="";S.fInvoice="";renderPage();return;}
+  if(t.id==="btn-clear"){S.search="";S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.fShipDate="";S.fInvoice="";S.fNoInvoice=false;S._statFilter=null;renderPage();return;}
+  if(t.id==="btn-clear-ship"){S.fShipDate="";S.fInvoice="";S.fNoInvoice=false;renderPage();return;}
+  if(t.id==="btn-set-invoice"){setInvoiceForShipment();return;}
   if(t.id==="btn-rpt-apply"){S._rptFrom=gv("rpt-from");S._rptTo=gv("rpt-to");renderPage();return;}
   if(t.id==="btn-rpt-excel"){exportRptExcel();return;}
   if(t.id==="btn-rpt-word"){exportRptWord();return;}
@@ -2850,8 +2935,8 @@ document.addEventListener("change",function(ev){
   else if(id==="fSub"){S.fSub=ev.target.value;renderPage();}
   else if(id==="fType"){S.fType=ev.target.value;renderPage();}
   else if(id==="fExp"){S.fExp=ev.target.value;renderPage();}
-  else if(id==="fShipDate"){S.fShipDate=ev.target.value;renderPage();}
-  else if(id==="fInvoice"){S.fInvoice=ev.target.value;renderPage();}
+  else if(id==="fShipDate"){S.fShipDate=ev.target.value;S.fNoInvoice=false;renderPage();}
+  else if(id==="fInvoice"){var _v=ev.target.value;if(_v.indexOf("__noinv__")===0){S.fInvoice="";S.fNoInvoice=true;S.fShipDate=_v.slice(9);}else{S.fInvoice=_v;S.fNoInvoice=false;}renderPage();}
 });
 
 document.addEventListener("input",function(ev){
@@ -3003,9 +3088,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-LOTS (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD LOTS LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-LOTS-4 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD LOTS-4 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS-4";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
