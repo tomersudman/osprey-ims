@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-LOTS-5</title>
+<title>OSPREY IMS v-LOTS-6</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -704,9 +704,17 @@ function esc(s) {
 function fdate(iso) { return fd(iso); }
 function fd(iso) {
   if (!iso) return "---";
-  return new Date(iso).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+  var s=String(iso).trim();
+  var m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    var MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return m[3]+" "+(MON[parseInt(m[2],10)-1]||m[2])+" "+m[1];
+  }
+  var d=new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
-function tod() { return new Date().toISOString().split("T")[0]; }
+function tod() { var d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
 var EXTRA_LOCATIONS = ["STORAGE 2 - 1-A","STORAGE 2 - 1-B","STORAGE 2 - 1-C","STORAGE 2 - 2-A","STORAGE 2 - 2-B","STORAGE 2 - 2-C","STORAGE 2 - 3-A","STORAGE 2 - 3-B","STORAGE 2 - 3-C","STORAGE 2 - 4-A","STORAGE 2 - 4-B","STORAGE 2 - 4-C","STORAGE 2 - 5-A","STORAGE 2 - 5-B","STORAGE 2 - 5-C","STORAGE 2 - 6-A","STORAGE 2 - 6-B","STORAGE 2 - 6-C","STORAGE 2 - 7-A","STORAGE 2 - 7-B","STORAGE 2 - 7-C","STORAGE 2 - 8-A","STORAGE 2 - 8-B","STORAGE 2 - 8-C"];
 var EXTRA_SUBSYS = ["MATERIALS","OTHER"];
 var SUBSYS_ORDER = ["CONSUMABLES", "MATERIALS", "ENGINE SPARES", "UAV SPARES", "GCS SPARES", "GCS MAINTENANCE", "GDT SPARES", "GSE", "IGCS 752", "SPECTRO OL SPARES", "PROPELLER", "UAV CALIBRATION TOOL", "System", "OTHER"];
@@ -738,9 +746,10 @@ function sst(item) {
 function scls(item) { return{ok:"sok",low:"slow",crit:"scrit",zero:"szero"}[sst(item)]; }
 function scell(item){ return'<span class="sn '+scls(item)+'">'+item.qty+'</span>'; }
 
+function pd(s){s=String(s==null?"":s).trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return new Date(s+"T00:00:00");return new Date(s);}
 function est(item) {
   if (!item.expiry) return null;
-  var d = (new Date(item.expiry)-Date.now())/86400000;
+  var d = (pd(item.expiry)-Date.now())/86400000;
   return d<0?"gone":d<=30?"soon":"ok";
 }
 function ecell(item) {
@@ -801,7 +810,7 @@ function wk() {
   return[m,s];
 }
 function mo() { var n=new Date(); return[new Date(n.getFullYear(),n.getMonth(),1),new Date(n.getFullYear(),n.getMonth()+1,0,23,59,59)]; }
-function inr(t,r) { var d=new Date(t.date); return d>=r[0]&&d<=r[1]; }
+function inr(t,r) { var d=pd(t.date); return d>=r[0]&&d<=r[1]; }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 function showLogin(){
@@ -2156,7 +2165,7 @@ function exportRptExcel(){
   var rFrom=S._rptFrom||tod().substring(0,7)+"-01",rTo=S._rptTo||tod();
   var fromD=new Date(rFrom+"T00:00:00"),toD=new Date(rTo+"T23:59:59");
   var rType=S._rptType||"all";
-  var txs=S.tx.filter(function(t){var d=new Date(t.date);if(d<fromD||d>toD)return false;if(rType==="draw"&&t.type!=="draw")return false;if(rType==="receive"&&t.type!=="receive")return false;return true;});
+  var txs=S.tx.filter(function(t){var d=pd(t.date);if(d<fromD||d>toD)return false;if(rType==="draw"&&t.type!=="draw")return false;if(rType==="receive"&&t.type!=="receive")return false;return true;});
   if(!txs.length){if(!confirm("No transactions. Export anyway?"))return;}
   var fname="Osprey_Report_"+rFrom+"_to_"+rTo;
   // Fallback to CSV if SheetJS unavailable
@@ -2222,7 +2231,7 @@ function exportRptWord(){
   var rFrom=S._rptFrom||tod().substring(0,7)+"-01",rTo=S._rptTo||tod();
   var fromD=new Date(rFrom+"T00:00:00"),toD=new Date(rTo+"T23:59:59");
   var rType=S._rptType||"all";
-  var txs=S.tx.filter(function(t){var d=new Date(t.date);if(d<fromD||d>toD)return false;if(rType==="draw"&&t.type!=="draw")return false;if(rType==="receive"&&t.type!=="receive")return false;return true;});
+  var txs=S.tx.filter(function(t){var d=pd(t.date);if(d<fromD||d>toD)return false;if(rType==="draw"&&t.type!=="draw")return false;if(rType==="receive"&&t.type!=="receive")return false;return true;});
   if(!txs.length){if(!confirm("No transactions. Export anyway?"))return;}
   var draws=txs.filter(function(t){return t.type==="draw";});
   var bi={};draws.forEach(function(t){var item=S.items.find(function(i){return i.id===t.itemId;})||{name:t.itemName,pn:""};var k=item.pn||item.name;if(!bi[k])bi[k]={name:item.name,pn:item.pn||"",qty:0};bi[k].qty+=t.qty;});
@@ -3089,9 +3098,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-LOTS-5 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD LOTS-5 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS-5";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-LOTS-6 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD LOTS-6 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS-6";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
