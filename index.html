@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-LOTS-4</title>
+<title>OSPREY IMS v-LOTS-5</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1441,8 +1441,9 @@ function detailHTML(item){
       var tag=t.type==="draw"?"txdd":"txdr";
       var lbl=t.type==="draw"?"DRAW":"RECV";
       var notes;
-      if(t.reasonCode==="Import"){
-        notes="Shipment import"+(t.invoice?" \u2013 invoice "+esc(t.invoice):"")+" \u2013 "+esc(fd(t.date));
+      if(t.reasonCode==="Import"||t.reasonCode==="Restock"||t.reasonCode==="Add"){
+        var _base=t.reasonCode==="Import"?"Shipment import":(t.reasonCode==="Restock"?"Restock":"New item");
+        notes=_base+(t.sn?" [S/N: "+esc(t.sn)+"]":"")+(t.invoice?" \u2013 invoice "+esc(t.invoice):"")+" \u2013 "+esc(fd(t.date));
       } else {
         notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
         if(t.invoice)notes+=" \u2013 invoice "+esc(t.invoice);
@@ -3088,9 +3089,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-LOTS-4 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD LOTS-4 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS-4";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-LOTS-5 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD LOTS-5 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS-5";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
