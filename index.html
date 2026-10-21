@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP-FILTER</title>
+<title>OSPREY IMS v-LOTS</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -150,6 +150,7 @@ tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
 #login-pin{width:100%;height:44px;text-align:center;font-size:18px;letter-spacing:.2em;border-radius:9px;border:1px solid var(--bd);background:var(--bg3);color:var(--tx);font-family:inherit}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;z-index:500;padding:20px;overflow-y:auto}
 .modal{background:var(--bg2);border:1px solid var(--bd2);border-radius:10px;width:560px;max-width:96vw;margin:auto}
+.modal.wide{width:760px}
 .modal.narrow{width:min(380px,92vw)}
 .mh{display:flex;align-items:flex-start;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--bd);gap:12px}
 .mt{font-size:15px;font-weight:600}
@@ -386,6 +387,8 @@ function loadFromSheets(callback) {
           if(typeof it.serialNotes==="string"&&it.serialNotes.trim()){try{it.serialNotes=JSON.parse(it.serialNotes);}catch(e){delete it.serialNotes;}}
           if(typeof it.serialShipDate==="string"&&it.serialShipDate.trim()){try{it.serialShipDate=JSON.parse(it.serialShipDate);}catch(e){delete it.serialShipDate;}}
           if(typeof it.serialInvoice==="string"&&it.serialInvoice.trim()){try{it.serialInvoice=JSON.parse(it.serialInvoice);}catch(e){delete it.serialInvoice;}}
+          if(typeof it.lots==="string"&&it.lots.trim()){try{it.lots=JSON.parse(it.lots);}catch(e){delete it.lots;}}
+          if(!Array.isArray(it.lots))delete it.lots;
         });
         S.items = d.items;
         S.tx    = d.tx    || [];
@@ -589,9 +592,86 @@ function stampShipMeta(item,sn,date,inv){
   if(sn){var k=String(sn).trim();
     if(date){if(!item.serialShipDate)item.serialShipDate={};item.serialShipDate[k]=date;}
     if(inv){if(!item.serialInvoice)item.serialInvoice={};item.serialInvoice[k]=inv;}
+  } else {
+    if(date)item.shipDate=date;
+    if(inv)item.invoice=inv;
   }
-  if(date)item.shipDate=date;
-  if(inv)item.invoice=inv;
+}
+// raw per-serial meta (no item-level fallback) - used for shipment filtering
+function rawSerialShip(item,sn){if(!item.serialShipDate)return "";var k=String(sn).trim();return (item.serialShipDate[sn]!=null?item.serialShipDate[sn]:(item.serialShipDate[k]!=null?item.serialShipDate[k]:""));}
+function rawSerialInv(item,sn){if(!item.serialInvoice)return "";var k=String(sn).trim();return (item.serialInvoice[sn]!=null?item.serialInvoice[sn]:(item.serialInvoice[k]!=null?item.serialInvoice[k]:""));}
+
+// ── NON-SERIAL LOTS (batches: qty + location/box/expiry/comment) ──────────────
+function itemLots(item){return Array.isArray(item.lots)?item.lots:[];}
+function lotKey(loc,box,exp){return (loc==null?"":String(loc)).trim().toLowerCase()+"|"+(box==null?"":String(box)).trim().toLowerCase()+"|"+(exp==null?"":String(exp)).trim();}
+function hasLotSplit(item){
+  if(isSerialized(item))return false;
+  var ls=itemLots(item); if(ls.length<2)return false;
+  var L={},B={},E={};
+  ls.forEach(function(x){L[(x.location||"").trim().toLowerCase()]=1;B[(x.box||"").trim().toLowerCase()]=1;E[(x.expiry||"").trim()]=1;});
+  return Object.keys(L).length>1||Object.keys(B).length>1||Object.keys(E).length>1;
+}
+function addNonSerialBatch(item,qty,loc,box,exp,note,date,inv){
+  qty=parseInt(qty)||0;
+  var newKey=lotKey(loc||item.location,box||item.floor,exp||item.expiry);
+  var curKey=lotKey(item.location,item.floor,item.expiry);
+  if((!Array.isArray(item.lots)||!item.lots.length)&&newKey===curKey){
+    item.qty=(parseInt(item.qty)||0)+qty;
+    if(date)item.shipDate=date; if(inv)item.invoice=inv;
+    return;
+  }
+  if(!Array.isArray(item.lots)||!item.lots.length){
+    item.lots=[{qty:parseInt(item.qty)||0,location:item.location||"",box:item.floor||"",expiry:item.expiry||"",note:item.notes||"",shipDate:item.shipDate||"",invoice:item.invoice||""}];
+  }
+  var lot=null;
+  for(var i=0;i<item.lots.length;i++){if(lotKey(item.lots[i].location,item.lots[i].box,item.lots[i].expiry)===newKey){lot=item.lots[i];break;}}
+  if(lot){lot.qty=(parseInt(lot.qty)||0)+qty; if(date)lot.shipDate=date; if(inv)lot.invoice=inv; if(note&&!lot.note)lot.note=note;}
+  else{item.lots.push({qty:qty,location:loc||item.location||"",box:box||item.floor||"",expiry:exp||item.expiry||"",note:note||"",shipDate:date||"",invoice:inv||""});}
+  item.qty=item.lots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);
+}
+function lotSection(item){
+  var ls=itemLots(item);
+  if(ls.length<2||!hasLotSplit(item))return "";
+  var th='padding:7px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;font-weight:600;white-space:nowrap';
+  var td='padding:7px 8px;font-size:12px;vertical-align:top';
+  var cols='<col style="width:12%"><col style="width:28%"><col style="width:19%"><col style="width:13%"><col style="width:28%">';
+  var header='<th style="'+th+'">Qty</th><th style="'+th+'">Location</th><th style="'+th+'">Expiry</th><th style="'+th+'">Box</th><th style="'+th+'">Comment</th>';
+  var rows=ls.map(function(L){
+    var exp=L.expiry?fdate(L.expiry):"---";
+    return '<tr style="border-top:1px solid var(--bd)">'+
+      '<td style="'+td+';font-weight:700;color:var(--tx)">'+(parseInt(L.qty)||0)+'</td>'+
+      '<td style="'+td+';color:var(--tx2);word-break:break-word">'+esc(L.location||"---")+'</td>'+
+      '<td style="'+td+';color:var(--amber);white-space:nowrap">'+esc(exp)+'</td>'+
+      '<td style="'+td+';font-weight:600;color:var(--tx);white-space:nowrap">'+esc(L.box||"---")+'</td>'+
+      '<td style="'+td+';color:var(--tx3);font-style:italic;word-break:break-word">'+esc(L.note||"---")+'</td>'+
+      '</tr>';
+  }).join("");
+  var note=[];var Lm={},Bm={},Em={};ls.forEach(function(x){Lm[(x.location||"").trim().toLowerCase()]=1;Bm[(x.box||"").trim().toLowerCase()]=1;Em[(x.expiry||"").trim()]=1;});
+  if(Object.keys(Lm).length>1)note.push("locations");
+  if(Object.keys(Bm).length>1)note.push("boxes");
+  if(Object.keys(Em).length>1)note.push("expiry");
+  return '<div class="ds"><div class="dst">Stock \u2014 split across '+note.join(", ")+' ('+ls.length+' batches)</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:300px;overflow-y:auto;overflow-x:auto">'+
+    '<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup>'+cols+'</colgroup>'+
+    '<thead><tr style="background:var(--bg3);position:sticky;top:0">'+header+'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function lotEditTable(item){
+  var ls=itemLots(item); if(!ls.length)return "";
+  var rows=ls.map(function(L,idx){
+    return '<tr>'+
+      '<td style="padding:4px 5px"><input type="number" min="0" class="edit-lot-qty" data-idx="'+idx+'" value="'+esc(L.qty!=null?L.qty:0)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:12px"></td>'+
+      '<td style="padding:4px 5px"><select class="edit-lot-loc" data-idx="'+idx+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:12px">'+locOptions(L.location||"")+'</select></td>'+
+      '<td style="padding:4px 5px"><input type="text" class="edit-lot-box" data-idx="'+idx+'" value="'+esc(L.box||"")+'" placeholder="box" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px"></td>'+
+      '<td style="padding:4px 5px"><input type="date" class="edit-lot-exp" data-idx="'+idx+'" value="'+esc(L.expiry||"")+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:11px"></td>'+
+      '<td style="padding:4px 5px"><input type="text" class="edit-lot-note" data-idx="'+idx+'" value="'+esc(L.note||"")+'" placeholder="comment" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px"></td>'+
+      '</tr>';
+  }).join("");
+  var th='padding:6px 6px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600';
+  return '<div class="ff" style="margin-top:4px"><label class="fl">Stock batches \u2014 qty, location, box, expiry &amp; comment ('+ls.length+')</label>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Each batch is a group of units in one place. Total stock = sum of all batch quantities. Set a batch qty to 0 to remove it.</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:8px;max-height:260px;overflow-y:auto;overflow-x:auto"><table style="width:100%;border-collapse:collapse;table-layout:fixed">'+
+    '<colgroup><col style="width:13%"><col style="width:27%"><col style="width:16%"><col style="width:21%"><col style="width:23%"></colgroup>'+
+    '<thead><tr style="background:var(--bg3)"><th style="'+th+'">Qty</th><th style="'+th+'">Location</th><th style="'+th+'">Box</th><th style="'+th+'">Expiry</th><th style="'+th+'">Comment</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 // Shared: add (or update) one serial on an item with its own location/box/expiry, qty = serial count
 function mergeSerialIntoItem(item,sn,loc,box,expiry,note,fallbackQty){
@@ -1350,6 +1430,7 @@ function detailHTML(item){
   var pct=Math.max(0,Math.min(100,Math.round((parseInt(item.qty)||0)/maxQ*100)));
   var bc=pct>40?"var(--green)":pct>20?"var(--amber)":"var(--red)";
   var showTable=isSerialized(item)&&(hasSplitLocations(item)||hasSplitBoxes(item)||hasSplitExpiry(item));
+  var showLotTable=!isSerialized(item)&&hasLotSplit(item);
   var tl="";
   if(!txs.length){tl='<div style="color:var(--tx3);font-size:13px;padding:10px 0">No transactions yet for this item.</div>';}
   else{
@@ -1359,11 +1440,16 @@ function detailHTML(item){
       var col=t.type==="draw"?"var(--red)":"var(--green)";
       var tag=t.type==="draw"?"txdd":"txdr";
       var lbl=t.type==="draw"?"DRAW":"RECV";
-      var notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
+      var notes;
+      if(t.reasonCode==="Import"){
+        notes="Shipment import"+(t.invoice?" \u2013 invoice "+esc(t.invoice):"")+" \u2013 "+esc(fd(t.date));
+      } else {
+        notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
+      }
       tl+='<div class="tlr"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span></div>';
     });
   }
-  return'<div class="mh">'+
+  return'<div class="mh" data-wide="1">'+
     '<div><div class="mt">'+esc(item.name)+'</div>'+
     '<div style="font-size:12px;color:var(--tx2);margin-top:3px">'+esc(item.pn)+(item.alt_pn?' - Alt: '+esc(item.alt_pn):'')+(item.subsys?' <span style="color:var(--tx3)">\u00b7</span> '+esc(item.subsys):'')+'</div></div>'+
     '<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+
@@ -1376,7 +1462,7 @@ function detailHTML(item){
     '<div style="margin-top:11px;height:8px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+bc+';border-radius:6px;transition:width .3s"></div></div>'+
     '<div style="margin-top:10px;font-size:12px;color:var(--tx2)">Original <b style="color:var(--tx)">'+(parseInt(item.initialQty)||0)+'</b> &nbsp;\u00b7&nbsp; Drawn <b style="color:var(--tx)">'+drawn+'</b> &nbsp;\u00b7&nbsp; Received <b style="color:var(--tx)">'+recvd+'</b></div>'+
     '</div>'+
-    (showTable?serialLocationSection(item):
+    (showTable?serialLocationSection(item):showLotTable?lotSection(item):
       '<div class="ds"><div class="dst">Placement</div><div class="dg2">'+
       dfield2("Location",item.location?'<span class="loctag">'+esc(item.location)+'</span>':'<span style="color:var(--tx3)">---</span>')+
       dfield2("Box",item.floor?esc(item.floor):'<span style="color:var(--tx3)">---</span>')+
@@ -1397,6 +1483,15 @@ function renderInventory(){
   var items=filt();
   var shipFilter=!!(S.fShipDate||(S.fInvoice&&S.fInvoice.trim()));
   var shipCount=0;
+  var invMap={};
+  S.items.forEach(function(it){
+    if(it.serialInvoice)Object.keys(it.serialInvoice).forEach(function(sn){var iv=it.serialInvoice[sn];if(iv&&invMap[iv]==null)invMap[iv]=(it.serialShipDate&&it.serialShipDate[sn])||"";});
+    if(it.invoice&&invMap[it.invoice]==null)invMap[it.invoice]=it.shipDate||"";
+  });
+  S.tx.forEach(function(t){if(t.type==="receive"&&t.invoice&&invMap[t.invoice]==null)invMap[t.invoice]=t.date||"";});
+  var invList=Object.keys(invMap).sort(function(a,b){var da=invMap[a]||"",db=invMap[b]||"";return da<db?1:da>db?-1:0;});
+  var invOpts='<option value="">All invoices</option>';
+  invList.forEach(function(iv){invOpts+='<option value="'+esc(iv)+'"'+(S.fInvoice===iv?" selected":"")+'>'+esc(iv)+(invMap[iv]?"  \u00b7  "+esc(fdate(invMap[iv])):"")+'</option>';});
   var locs=uniq("location"),subs=uniq("subsys");
   var locO='<option value="">All locations</option>';
   locs.forEach(function(l){locO+='<option value="'+esc(l)+'"'+(S.fLoc===l?" selected":"")+'>'+esc(l)+'</option>';});
@@ -1441,25 +1536,33 @@ function renderInventory(){
     var entries=[];var seen={};
     var matchMeta=function(d,inv){
       var okD=!S.fShipDate||(d===S.fShipDate);
-      var okI=!invQ||(inv&&String(inv).toLowerCase().indexOf(invQ)>=0);
+      var okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);
       return okD&&okI;
     };
     S.items.forEach(function(item){
       var sers=itemSerials(item);
       if(sers.length){
         sers.forEach(function(sn){
-          if(matchMeta(serialShipDate(item,sn),serialInvoice(item,sn))){
+          if(matchMeta(rawSerialShip(item,sn),rawSerialInv(item,sn))){
             var k=item.id+"|"+sn;if(seen[k])return;seen[k]=1;
             entries.push({item:item,sn:sn});
           }
         });
       } else {
-        var tdate=item.shipDate||"",tinv=item.invoice||"";
-        var hit=matchMeta(tdate,tinv);
-        if(!hit){ // fall back to receive transactions for non-serialized history
-          hit=S.tx.some(function(t){return t.itemId===item.id&&t.type==="receive"&&matchMeta(t.date||"",t.invoice||"");});
+        var lots=itemLots(item);
+        if(lots.length){
+          lots.forEach(function(L,li){
+            if(matchMeta(L.shipDate||"",L.invoice||"")){
+              var kl=item.id+"|lot"+li;if(seen[kl])return;seen[kl]=1;
+              entries.push({item:item,sn:null,lot:L});
+            }
+          });
+        } else {
+          var tdate=item.shipDate||"",tinv=item.invoice||"";
+          var hit=matchMeta(tdate,tinv);
+          if(!hit){hit=S.tx.some(function(t){return t.itemId===item.id&&t.type==="receive"&&matchMeta(t.date||"",t.invoice||"");});}
+          if(hit){var k2=item.id+"|";if(!seen[k2]){seen[k2]=1;entries.push({item:item,sn:null,lot:null});}}
         }
-        if(hit){var k2=item.id+"|";if(!seen[k2]){seen[k2]=1;entries.push({item:item,sn:null});}}
       }
     });
     shipCount=entries.length;
@@ -1469,7 +1572,8 @@ function renderInventory(){
       var item=e.item,sn=e.sn;
       var nm=hl(item.name);
       var meta;
-      if(sn){meta={loc:serialLoc(item,sn),box:serialBox(item,sn),exp:serialExpiry(item,sn),note:serialNote(item,sn),date:serialShipDate(item,sn),inv:serialInvoice(item,sn),qty:1,sncell:esc(sn)};}
+      if(sn){meta={loc:serialLoc(item,sn),box:serialBox(item,sn),exp:serialExpiry(item,sn),note:serialNote(item,sn),date:rawSerialShip(item,sn),inv:rawSerialInv(item,sn),qty:1,sncell:esc(sn)};}
+      else if(e.lot){var L=e.lot;meta={loc:L.location||"",box:L.box||"",exp:L.expiry||"",note:L.note||"",date:L.shipDate||"",inv:L.invoice||"",qty:parseInt(L.qty)||0,sncell:"---"};}
       else{meta={loc:item.location||"",box:item.floor||"",exp:item.expiry||"",note:item.notes||"",date:item.shipDate||"",inv:item.invoice||"",qty:item.qty,sncell:"---"};}
       var lc=meta.loc?'<span class="loctag">'+esc(meta.loc)+'</span>':'<span style="color:var(--tx3)">---</span>';
       var boxc=meta.box?'<span style="font-size:12px;color:var(--tx2);font-family:monospace">'+esc(meta.box)+'</span>':'<span style="color:var(--tx3)">---</span>';
@@ -1500,7 +1604,7 @@ function renderInventory(){
     '<select id="fSub" style="width:105px">'+subO+'</select>'+
     '<select id="fExp" style="width:105px"><option value="">All expiry</option><option value="expiring"'+(S.fExp==="expiring"?" selected":"")+'>Expiring</option><option value="expired"'+(S.fExp==="expired"?" selected":"")+'>Expired</option></select>'+
     '<input id="fShipDate" type="date" value="'+esc(S.fShipDate||"")+'" title="Filter by shipment date" style="width:140px"'+(S.fShipDate?' class="bg"':'')+'>'+
-    '<input id="fInvoice" type="text" placeholder="Invoice #" value="'+esc(S.fInvoice||"")+'" style="width:120px">'+
+    '<select id="fInvoice" style="width:180px" title="Filter by invoice">'+invOpts+'</select>'+
     (shipFilter?'<button class="btn sm" id="btn-clear-ship" style="border-color:var(--amber);color:var(--amber)">Clear shipment</button>':'')+
     '<button class="btn bg sm" id="btn-xcsv">Excel</button>'+
     '<button class="btn sm" id="btn-bulk-labels">Download Labels</button>'+
@@ -1688,7 +1792,7 @@ function serialLocEditTable(item){
   var th='padding:6px 6px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600';
   return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers \u2014 location, box, expiry &amp; comment ('+sers.length+')</label>'+
     '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Set location, box, expiry and comment per serial. Leave blank to use the item defaults above.</div>'+
-    '<div style="border:1px solid var(--bd);border-radius:8px;overflow:hidden;max-height:260px;overflow-y:auto">'+
+    '<div style="border:1px solid var(--bd);border-radius:8px;max-height:260px;overflow-y:auto;overflow-x:auto">'+
     '<table style="width:100%;border-collapse:collapse;table-layout:fixed">'+
     '<colgroup><col style="width:16%"><col style="width:26%"><col style="width:15%"><col style="width:20%"><col style="width:23%"></colgroup>'+
     '<thead><tr style="background:var(--bg3)">'+
@@ -1699,6 +1803,7 @@ function buildItemModal(id){
   var isEdit=!!id;
   var item=isEdit?S.items.find(function(i){return i.id===id;}):{};
   var showSerial=isEdit&&isSerialized(item)&&itemSerials(item).length>1;
+  var showLot=isEdit&&!isSerialized(item)&&itemLots(item).length>1;
   var locO="",subO="";
   var curLoc=item.location||"", curSub=item.subsys||"";
   var locKnown=false, subKnown=false;
@@ -1707,7 +1812,7 @@ function buildItemModal(id){
   // If the item's current value isn't in the known list, add it as a selected option so it shows
   if(curLoc&&!locKnown)locO='<option value="'+esc(curLoc)+'" selected>'+esc(curLoc)+'</option>'+locO;
   if(curSub&&!subKnown)subO='<option value="'+esc(curSub)+'" selected>'+esc(curSub)+'</option>'+subO;
-  return'<div class="mh"><div class="mt">'+(isEdit?"Edit item":"Add new item")+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
+  return'<div class="mh" data-wide="1"><div class="mt">'+(isEdit?"Edit item":"Add new item")+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb"><div class="fg">'+
     '<div class="ff"><label class="fl">Item Name *</label><input id="m-name" type="text" value="'+esc(item.name||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">P/N</label><input id="m-pn" type="text" value="'+esc(item.pn||"")+'" style="width:100%"></div>'+
@@ -1715,8 +1820,10 @@ function buildItemModal(id){
     '<div><label class="fl">Sub-System</label><select id="m-subsys" style="width:100%" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new sub-system:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.selectedIndex=0;}}"><option value="">-- select --</option>'+subO+'<option value="__other__">Other (type new)...</option></select></div>'+
     (showSerial?
       '<div style="grid-column:1/-1">'+serialLocEditTable(item)+'</div>':
+      showLot?
+      '<div style="grid-column:1/-1">'+lotEditTable(item)+'</div>':
       '<div><label class="fl">Serial Number (S/N)</label><input id="m-sn" type="text" value="'+esc(item.sn||"")+'" placeholder="e.g. SN-001234" style="width:100%"></div>')+
-    (showSerial?'':(
+    ((showSerial||showLot)?'':(
     '<div><label class="fl">Location *</label><select id="m-location" style="width:100%" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.selectedIndex=0;}}"><option value="">-- select --</option>'+locO+'<option value="__other__">Other (type new)...</option></select></div>'+
     '<div><label class="fl">Box</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
@@ -1732,7 +1839,8 @@ function buildItemModal(id){
 // ── MODAL CONTROLLER ──────────────────────────────────────────────────────────
 function showModal(html, noClose) {
   var el=document.getElementById("md");
-  el.innerHTML='<div class="ov" id="ov-bg"><div class="modal">'+html+'</div></div>';
+  var wide=(html.indexOf('data-wide="1"')>=0)?' wide':'';
+  el.innerHTML='<div class="ov" id="ov-bg"><div class="modal'+wide+'">'+html+'</div></div>';
   if (!noClose) {
     document.getElementById("ov-bg").addEventListener("click",function(ev){
       if(ev.target.id==="ov-bg") closeModal();
@@ -1777,6 +1885,19 @@ function submitTx(){
     }
   }
   item.qty=isOut?item.qty-qty:item.qty+qty;
+  if(!isSer&&Array.isArray(item.lots)&&item.lots.length){
+    if(isOut){
+      var remain=qty;
+      for(var li=0;li<item.lots.length&&remain>0;li++){var lq=parseInt(item.lots[li].qty)||0;var take=Math.min(lq,remain);item.lots[li].qty=lq-take;remain-=take;}
+      item.lots=item.lots.filter(function(L){return (parseInt(L.qty)||0)>0;});
+    } else {
+      item.lots[0].qty=(parseInt(item.lots[0].qty)||0)+qty;
+    }
+    if(item.lots.length<=1){
+      if(item.lots.length){item.location=item.lots[0].location;item.floor=item.lots[0].box;item.expiry=item.lots[0].expiry;}
+      delete item.lots;
+    }
+  }
   var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",ts:Date.now()};
   S.tx.push(newTx);
   saveAndPushTx(newTx);
@@ -1845,6 +1966,19 @@ function submitItem(id){
       snNoteInputs.forEach(function(inp){setSerialNote(item,inp.getAttribute("data-sn"),inp.value);});
     }
     if(hasSerTable)item.qty=itemSerials(item).length;
+    var lotRows=document.querySelectorAll(".edit-lot-loc");
+    if(lotRows.length){
+      var newLots=[];
+      document.querySelectorAll(".edit-lot-qty").forEach(function(qel){
+        var idx=qel.getAttribute("data-idx");
+        var q=parseInt(qel.value)||0; if(q<=0)return;
+        var get=function(cls){var e=document.querySelector("."+cls+"[data-idx='"+idx+"']");return e?e.value.trim():"";};
+        newLots.push({qty:q,location:get("edit-lot-loc"),box:get("edit-lot-box"),expiry:get("edit-lot-exp"),note:get("edit-lot-note"),shipDate:"",invoice:""});
+      });
+      item.lots=newLots;
+      item.qty=newLots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);
+      if(newLots.length){item.location=newLots[0].location;item.floor=newLots[0].box;item.expiry=newLots[0].expiry;}
+    }
   } else {
     var pnVal=(gv("m-pn")||"").trim();
     // Duplicate P/N check (only if a real P/N was entered)
@@ -2272,10 +2406,10 @@ function parseBulkPaste(){
       var newLoc=(r.row.location&&r.row.location.trim())?r.row.location.trim():"";
       var existLoc=(r.match&&r.match.location)?r.match.location:(r.location||"");
       var hasSn=(r.row.sn&&r.row.sn.trim());
-      if(hasSn&&newLoc&&existLoc&&newLoc.toLowerCase()!==existLoc.toLowerCase()){
+      if(newLoc&&existLoc&&newLoc.toLowerCase()!==existLoc.toLowerCase()){
         locCell='<div style="font-size:10px;color:var(--tx3);margin-bottom:2px">Existing stock in <b style="color:var(--tx2)">'+esc(existLoc)+'</b></div>'+
-          '<select id="bulk-serloc-'+i+'" style="width:160px;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px">'+
-          '<option value="'+esc(newLoc)+'" selected>New serial \u2192 '+esc(newLoc)+'</option>'+
+          '<select id="bulk-serloc-'+i+'" style="width:170px;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px">'+
+          '<option value="'+esc(newLoc)+'" selected>New location \u2192 '+esc(newLoc)+'</option>'+
           '<option value="'+esc(existLoc)+'">Same as stock \u2192 '+esc(existLoc)+'</option></select>';
       } else if(hasSn){
         locCell='<span class="loctag">'+esc(newLoc||existLoc||"?")+'</span> <span style="font-size:10px;color:var(--green)">\u2192 new serial added here</span>';
@@ -2329,6 +2463,11 @@ function executeBulkImport(){
     var rQty=parseInt(r.row.qty)||0;
     var slEl=document.getElementById("bulk-serloc-"+i);
     var serLoc=slEl?slEl.value:eLoc;
+    var importInto=function(target,locForBatch){
+      if(eSn){var a=mergeSerialIntoItem(target,eSn,locForBatch,eBox,eExp,eNote,rQty);stampShipMeta(target,eSn,arrDate,arrInv);return a;}
+      addNonSerialBatch(target,rQty,locForBatch,eBox,eExp,eNote,arrDate,arrInv);
+      return rQty;
+    };
     var buildNew=function(locVal){
       var ni={id:String(Date.now()+i*7+Math.floor(Math.random()*997)),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:"",location:locVal,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:rQty,initialQty:rQty};
       if(eSn){ni.serials=[];mergeSerialIntoItem(ni,eSn,eLoc||locVal,eBox,eExp,eNote,rQty);}
@@ -2340,7 +2479,7 @@ function executeBulkImport(){
       var dec=decisions[i]||"skip";
       if(dec==="skip"){sk++;return;}
       if(dec==="merge"&&r.match){
-        var added=mergeSerialIntoItem(r.match,eSn,serLoc,eBox,eExp,eNote,rQty);stampShipMeta(r.match,eSn,arrDate,arrInv);up++;
+        var added=importInto(r.match,serLoc);up++;
         importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:added,remaining:r.match.qty,serial:eSn});
         return;
       }
@@ -2349,7 +2488,7 @@ function executeBulkImport(){
     }
     if(skip[i]){sk++;return;}
     if(r.status==="exact"){
-      var added2=mergeSerialIntoItem(r.match,eSn,serLoc,eBox,eExp,eNote,rQty);stampShipMeta(r.match,eSn,arrDate,arrInv);up++;
+      var added2=importInto(r.match,serLoc);up++;
       importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:added2,remaining:r.match.qty,serial:eSn});
       return;
     }
@@ -2357,7 +2496,7 @@ function executeBulkImport(){
     var mpn=(r.row.pn||"").trim().toLowerCase(), mname=(r.row.name||"").trim().toLowerCase();
     var mergeTarget=(mpn&&mpn!=="---")?S.items.find(function(it){return (it.pn||"").trim().toLowerCase()===mpn&&(it.name||"").trim().toLowerCase()===mname;}):null;
     if(mergeTarget){
-      var added3=mergeSerialIntoItem(mergeTarget,eSn,(serLoc||loc),eBox,eExp,eNote,rQty);stampShipMeta(mergeTarget,eSn,arrDate,arrInv);up++;
+      var added3=importInto(mergeTarget,serLoc||loc);up++;
       importedTx.push({itemId:mergeTarget.id,itemName:mergeTarget.name,addQty:added3,remaining:mergeTarget.qty,serial:eSn});
     } else {
       buildNew(loc);
@@ -2864,9 +3003,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP-FILTER (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP-FILTER LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP-FILTER";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-LOTS (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD LOTS LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
