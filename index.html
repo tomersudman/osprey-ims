@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY-V2BOX-VERIFY</title>
+<title>OSPREY IMS v-SERIAL-EXP</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -382,6 +382,8 @@ function loadFromSheets(callback) {
           if(it.sn!=null&&it.sn!=="")it.sn=String(it.sn).trim();
           if(typeof it.serialLocations==="string"&&it.serialLocations.trim()){try{it.serialLocations=JSON.parse(it.serialLocations);}catch(e){delete it.serialLocations;}}
           if(typeof it.serialBoxes==="string"&&it.serialBoxes.trim()){try{it.serialBoxes=JSON.parse(it.serialBoxes);}catch(e){delete it.serialBoxes;}}
+          if(typeof it.serialExpiry==="string"&&it.serialExpiry.trim()){try{it.serialExpiry=JSON.parse(it.serialExpiry);}catch(e){delete it.serialExpiry;}}
+          if(typeof it.serialNotes==="string"&&it.serialNotes.trim()){try{it.serialNotes=JSON.parse(it.serialNotes);}catch(e){delete it.serialNotes;}}
         });
         S.items = d.items;
         S.tx    = d.tx    || [];
@@ -540,6 +542,60 @@ function hasSplitBoxes(item){
   var boxes={};
   sers.forEach(function(sn){boxes[serialBox(item,sn)||"?"]=1;});
   return Object.keys(boxes).length>1;
+}
+function serialExpiry(item,sn){
+  var key=String(sn).trim();
+  if(item.serialExpiry){
+    if(item.serialExpiry[sn]!=null&&String(item.serialExpiry[sn]).trim())return item.serialExpiry[sn];
+    if(item.serialExpiry[key]!=null&&String(item.serialExpiry[key]).trim())return item.serialExpiry[key];
+  }
+  return item.expiry||"";
+}
+function setSerialExpiry(item,sn,exp){
+  if(!item.serialExpiry)item.serialExpiry={};
+  if(exp&&String(exp).trim())item.serialExpiry[sn]=String(exp).trim();
+  else delete item.serialExpiry[sn];
+}
+function hasSplitExpiry(item){
+  var sers=itemSerials(item);
+  if(sers.length<2)return false;
+  var ex={};
+  sers.forEach(function(sn){ex[serialExpiry(item,sn)||"?"]=1;});
+  return Object.keys(ex).length>1;
+}
+function serialNote(item,sn){
+  var key=String(sn).trim();
+  if(item.serialNotes){
+    if(item.serialNotes[sn]!=null&&String(item.serialNotes[sn]).trim())return item.serialNotes[sn];
+    if(item.serialNotes[key]!=null&&String(item.serialNotes[key]).trim())return item.serialNotes[key];
+  }
+  return "";
+}
+function setSerialNote(item,sn,note){
+  if(!item.serialNotes)item.serialNotes={};
+  if(note&&String(note).trim())item.serialNotes[sn]=String(note).trim();
+  else delete item.serialNotes[sn];
+}
+function hasSerialNotes(item){
+  var sers=itemSerials(item);
+  return sers.some(function(sn){return serialNote(item,sn);});
+}
+// Shared: add (or update) one serial on an item with its own location/box/expiry, qty = serial count
+function mergeSerialIntoItem(item,sn,loc,box,expiry,note,fallbackQty){
+  sn=(sn==null?"":String(sn)).trim();
+  if(sn){
+    if(!Array.isArray(item.serials))item.serials=(item.sn&&String(item.sn).trim())?[String(item.sn).trim()]:[];
+    if(item.serials.indexOf(sn)<0)item.serials.push(sn);
+    if(!item.sn)item.sn=sn;
+    if(loc&&String(loc).trim()&&String(loc).trim()!=="Unknown")setSerialLoc(item,sn,loc);
+    if(box&&String(box).trim())setSerialBox(item,sn,box);
+    if(expiry&&String(expiry).trim())setSerialExpiry(item,sn,expiry);
+    if(note&&String(note).trim())setSerialNote(item,sn,note);
+    item.qty=item.serials.length;
+  } else {
+    item.qty=(parseInt(item.qty)||0)+(parseInt(fallbackQty)||0);
+  }
+  return sn?1:(parseInt(fallbackQty)||0);
 }
 function hasSplitLocations(item){
   // True if serials are stored in more than one distinct location
@@ -1243,24 +1299,30 @@ function dfield2(l,v){return'<div class="df2"><div class="dfl2">'+l+'</div><div 
 
 function serialLocationSection(item){
   var sers=itemSerials(item);
-  if(!sers.length)return "";
-  var splitLoc=hasSplitLocations(item), splitBox=hasSplitBoxes(item);
-  if(!splitLoc&&!splitBox)return "";
+  if(sers.length<2)return "";
+  var splitLoc=hasSplitLocations(item), splitBox=hasSplitBoxes(item), splitExp=hasSplitExpiry(item);
   var rows=sers.map(function(sn){
     var loc=serialLoc(item,sn)||"---";
     var box=serialBox(item,sn)||"---";
-    return '<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid var(--bd)">'+
-      '<span style="font-family:monospace;font-size:12px;color:var(--tx);width:90px;flex:0 0 auto">'+esc(sn)+'</span>'+
+    var exp=serialExpiry(item,sn)||"";
+    var note=serialNote(item,sn)||"";
+    var expChip=exp?('<span style="font-size:11px;color:var(--amber);flex:0 0 auto;white-space:nowrap">'+esc(fdate(exp))+'</span>'):'';
+    var noteLine=note?('<div style="padding:0 12px 7px 96px;font-size:11px;color:var(--tx3);font-style:italic">'+esc(note)+'</div>'):'';
+    return '<div style="border-top:1px solid var(--bd)"><div style="display:flex;align-items:center;gap:10px;padding:8px 12px'+(note?' 2px 12px':'')+'">'+
+      '<span style="font-family:monospace;font-size:12px;color:var(--tx);width:84px;flex:0 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(sn)+'</span>'+
       '<span style="font-size:12px;color:var(--tx2);flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(loc)+'</span>'+
-      '<span style="font-size:12px;color:var(--tx);font-weight:600;flex:0 0 auto;background:var(--bg3);padding:2px 8px;border-radius:5px">Box '+esc(box)+'</span>'+
-      '</div>';
+      expChip+
+      '<span style="font-size:12px;color:var(--tx);font-weight:600;flex:0 0 auto;background:var(--bg3);padding:2px 8px;border-radius:5px;white-space:nowrap">Box '+esc(box)+'</span>'+
+      '</div>'+noteLine+'</div>';
   }).join("");
   var note=[];
   if(splitLoc)note.push("locations");
   if(splitBox)note.push("boxes");
-  return '<div class="ds"><div class="dst">Serials &mdash; split across '+note.join(" &amp; ")+' ('+sers.length+')</div>'+
+  if(splitExp)note.push("expiry");
+  var title=note.length?('Serials &mdash; split across '+note.join(", ")+' ('+sers.length+')'):('Serial numbers ('+sers.length+')');
+  return '<div class="ds"><div class="dst">'+title+'</div>'+
     '<div style="border:1px solid var(--bd);border-radius:9px;max-height:300px;overflow-y:auto;overflow-x:hidden">'+rows+'</div>'+
-    '<div style="font-size:11px;color:var(--tx3);margin-top:7px">To change serial locations or boxes, use the Edit button.</div>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-top:7px">Each line: serial, location, expiry, box (and comment if any). To change, use Edit.</div>'+
     '</div>';
 }
 function detailHTML(item){
@@ -1299,7 +1361,7 @@ function detailHTML(item){
       dfield2("S/N",'<span style="color:var(--tx3)">---</span>'))+
     dfield2("Location",hasSplitLocations(item)?'<span style="color:var(--amber)">Multiple</span>':(item.location?'<span class="loctag">'+esc(item.location)+'</span>':'---'))+
     dfield2("Box",hasSplitBoxes(item)?'<span style="color:var(--amber)">Multiple</span>':(item.floor?esc(item.floor):'---'))+
-    dfield2("Expiry",ecell(item))+
+    dfield2("Expiry",hasSplitExpiry(item)?'<span style="color:var(--amber)">Multiple</span>':ecell(item))+
     dfield2("Transactions",txs.length)+
     '</div>'+(item.notes?'<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx2)">Note: '+esc(item.notes)+'</div>':"")+
     '</div>'+
@@ -1527,23 +1589,31 @@ function serialLocEditTable(item){
   var rows=sers.map(function(sn){
     var cur=(item.serialLocations&&item.serialLocations[sn])?item.serialLocations[sn]:"";
     var curBox=(item.serialBoxes&&item.serialBoxes[sn])?item.serialBoxes[sn]:"";
+    var curExp=(item.serialExpiry&&item.serialExpiry[sn])?item.serialExpiry[sn]:"";
+    var curNote=(item.serialNotes&&item.serialNotes[sn])?item.serialNotes[sn]:"";
     return '<tr>'+
-      '<td style="padding:6px 8px;font-family:monospace;font-size:12px;color:var(--tx);white-space:nowrap">'+esc(sn)+'</td>'+
-      '<td style="padding:4px 6px">'+
-        '<select class="edit-sn-loc" data-sn="'+esc(sn)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px">'+locOptions(cur)+'</select>'+
+      '<td style="padding:6px 6px;font-family:monospace;font-size:12px;color:var(--tx);white-space:nowrap">'+esc(sn)+'</td>'+
+      '<td style="padding:4px 5px">'+
+        '<select class="edit-sn-loc" data-sn="'+esc(sn)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:12px">'+locOptions(cur)+'</select>'+
       '</td>'+
-      '<td style="padding:4px 6px">'+
-        '<input type="text" class="edit-sn-box" data-sn="'+esc(sn)+'" value="'+esc(curBox)+'" placeholder="'+esc(item.floor||"box")+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 8px;font-size:12px">'+
+      '<td style="padding:4px 5px">'+
+        '<input type="text" class="edit-sn-box" data-sn="'+esc(sn)+'" value="'+esc(curBox)+'" placeholder="'+esc(item.floor||"box")+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px">'+
+      '</td>'+
+      '<td style="padding:4px 5px">'+
+        '<input type="date" class="edit-sn-exp" data-sn="'+esc(sn)+'" value="'+esc(curExp)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:11px">'+
+      '</td>'+
+      '<td style="padding:4px 5px">'+
+        '<input type="text" class="edit-sn-note" data-sn="'+esc(sn)+'" value="'+esc(curNote)+'" placeholder="comment" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px">'+
       '</td></tr>';
   }).join("");
-  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers, locations &amp; boxes ('+sers.length+')</label>'+
-    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Set a location and box per serial. Leave blank to use the item defaults above.</div>'+
-    '<div style="border:1px solid var(--bd);border-radius:8px;overflow:hidden;max-height:240px;overflow-y:auto">'+
-    '<table style="width:100%;border-collapse:collapse">'+
+  var th='padding:6px 6px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600';
+  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers \u2014 location, box, expiry &amp; comment ('+sers.length+')</label>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Set location, box, expiry and comment per serial. Leave blank to use the item defaults above.</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:8px;overflow:hidden;max-height:260px;overflow-y:auto">'+
+    '<table style="width:100%;border-collapse:collapse;table-layout:fixed">'+
+    '<colgroup><col style="width:16%"><col style="width:26%"><col style="width:15%"><col style="width:20%"><col style="width:23%"></colgroup>'+
     '<thead><tr style="background:var(--bg3)">'+
-    '<th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Serial</th>'+
-    '<th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Location</th>'+
-    '<th style="padding:6px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Box</th>'+
+    '<th style="'+th+'">Serial</th><th style="'+th+'">Location</th><th style="'+th+'">Box</th><th style="'+th+'">Expiry</th><th style="'+th+'">Comment</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 function buildItemModal(id){
@@ -1569,7 +1639,7 @@ function buildItemModal(id){
     '<div><label class="fl">Location *</label><select id="m-location" style="width:100%" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.selectedIndex=0;}}"><option value="">-- select --</option>'+locO+'<option value="__other__">Other (type new)...</option></select></div>'+
     '<div><label class="fl">Box</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
-    (!isEdit?'<div><label class="fl">Initial quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="'+esc(item.qty!=null?item.qty:1)+'" style="width:100%"></div>')+
+    (!isEdit?'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="'+esc(item.qty!=null?item.qty:1)+'" style="width:100%"></div>')+
     '<div class="ff"><label class="fl">Comments</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'+
     '</div></div>'+
     '<div class="mf">'+
@@ -1613,6 +1683,8 @@ function submitTx(){
       item.sn=item.serials[0]||"";
       if(item.serialLocations&&item.serialLocations[snPicked])delete item.serialLocations[snPicked];
       if(item.serialBoxes&&item.serialBoxes[snPicked])delete item.serialBoxes[snPicked];
+      if(item.serialExpiry&&item.serialExpiry[snPicked])delete item.serialExpiry[snPicked];
+      if(item.serialNotes&&item.serialNotes[snPicked])delete item.serialNotes[snPicked];
     } else {
       if(item.serials.indexOf(snPicked)<0)item.serials.push(snPicked);
       item.sn=item.serials[0]||snPicked;
@@ -1674,6 +1746,14 @@ function submitItem(id){
     var snBoxInputs=document.querySelectorAll(".edit-sn-box");
     if(snBoxInputs.length){
       snBoxInputs.forEach(function(inp){setSerialBox(item,inp.getAttribute("data-sn"),inp.value);});
+    }
+    var snExpInputs=document.querySelectorAll(".edit-sn-exp");
+    if(snExpInputs.length){
+      snExpInputs.forEach(function(inp){setSerialExpiry(item,inp.getAttribute("data-sn"),inp.value);});
+    }
+    var snNoteInputs=document.querySelectorAll(".edit-sn-note");
+    if(snNoteInputs.length){
+      snNoteInputs.forEach(function(inp){setSerialNote(item,inp.getAttribute("data-sn"),inp.value);});
     }
   } else {
     var pnVal=(gv("m-pn")||"").trim();
@@ -2087,11 +2167,11 @@ function parseBulkPaste(){
   res.forEach(function(r,i){
     var qtyMissing=r.row.qtyBlank;
     var sc,sl;
-    if(r.status==="new"){sc="var(--green)";sl="NEW";}
-    else if(r.status==="exact"){sc="var(--green)";sl="GOOD TO GO";}
-    else if(r.status==="cpn"){sc="var(--amber)";sl="\u26A0 SAME P/N";}
-    else if(r.status==="cname"){sc="var(--amber)";sl="\u26A0 SAME NAME";}
-    else {sc="var(--amber)";sl="REVIEW";}
+    if(r.status==="new"){sc="var(--green)";sl="NEW ITEM";}
+    else if(r.status==="exact"){sc="var(--blue2)";sl="UPDATE EXISTING";}
+    else if(r.status==="cpn"){sc="var(--amber)";sl="\u26A0 REVIEW: same P/N, different name";}
+    else if(r.status==="cname"){sc="var(--amber)";sl="\u26A0 REVIEW: same name, different P/N";}
+    else {sc="var(--amber)";sl="\u26A0 REVIEW";}
     if(qtyMissing){sc="var(--red)";sl="QTY NOT INSERTED";}
     var chk=(r.status==="cpn"||r.status==="cname")?"":"checked";
     var locCell;
@@ -2103,7 +2183,12 @@ function parseBulkPaste(){
       lopts+='<option value="__other__">Other (type new)...</option>';
       locCell='<select id="bulk-loc-'+i+'" style="width:130px;height:26px;font-size:11px;background:var(--bg);border:1px solid '+(r.row.location?'var(--bd)':'var(--amber)')+';color:var(--tx);border-radius:3px" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.value=\'\';}}">'+lopts+'</select>';
     } else {
-      locCell='<span class="loctag">'+esc(r.location||"?")+'</span> <span style="font-size:10px;color:var(--tx3)">(kept)</span>';
+      var rl=(r.row.location&&r.row.location.trim())?r.row.location.trim():(r.location||"");
+      if(r.status==="exact"&&(r.row.sn&&r.row.sn.trim())){
+        locCell='<span class="loctag">'+esc(rl||"?")+'</span> <span style="font-size:10px;color:var(--green)">\u2192 new serial added here</span>';
+      } else {
+        locCell='<span class="loctag">'+esc(rl||r.location||"?")+'</span> <span style="font-size:10px;color:var(--tx3)">(kept)</span>';
+      }
     }
     html+='<tr class="bulk-preview-row" data-status="'+r.status+'" style="border-bottom:1px solid var(--bd)"><td style="padding:5px 8px;text-align:center">'+((r.status==="cpn"||r.status==="cname")?'<span style="color:var(--tx3);font-size:11px">\u2193</span>':'<input type="checkbox" class="bulk-skip-cb" data-idx="'+i+'" '+chk+'>')+'</td><td style="padding:5px 8px">'+esc(r.row.name)+'</td><td style="padding:5px 8px"><span class="pn">'+esc(r.row.pn)+'</span></td><td style="padding:5px 8px;text-align:center;font-weight:600">'+r.row.qty+'</td><td style="padding:5px 8px">'+locCell+'</td><td style="padding:5px 8px"><span style="color:'+sc+';font-weight:600">'+sl+'</span>'+(r.reason?'<div style="font-size:10px;color:var(--amber);margin:3px 0">'+r.reason+'</div>':"")+((r.status==="cpn"||r.status==="cname")?'<select class="bulk-decision" data-idx="'+i+'" style="width:100%;height:26px;font-size:11px;background:var(--bg);border:1px solid var(--amber);color:var(--tx);border-radius:3px;margin-top:2px"><option value="skip">Skip this row</option><option value="merge">Same item &mdash; merge into existing</option><option value="new">Different item &mdash; add as new</option></select>':"")+'</td></tr>';
   });
@@ -2138,113 +2223,56 @@ function executeBulkImport(){
   var arrDate=(document.getElementById("bulk-arrival-date")||{}).value||tod();
   var importedTx=[];
   _bulkMatches.forEach(function(r,i){
-    // Same-P/N or same-name rows: use the user's decision
+    var eSn=(r.row.sn||"").trim();
+    var eLoc=(r.row.location||"").trim();
+    var eBox=(r.row.floor||"").trim();
+    var eExp=(r.row.expiry||"").trim();
+    var eNote=(r.row.notes||"").trim();
+    var rQty=parseInt(r.row.qty)||0;
+    // Helper to build a brand-new item from this row
+    var buildNew=function(locVal){
+      var ni={id:String(Date.now()+i*7+Math.floor(Math.random()*997)),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:"",location:locVal,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:rQty,initialQty:rQty};
+      if(eSn){ni.serials=[];mergeSerialIntoItem(ni,eSn,eLoc||locVal,eBox,eExp,eNote,rQty);}
+      S.items.push(ni);if(!S._newItems)S._newItems=[];S._newItems.push(ni.id);ad++;
+      importedTx.push({itemId:ni.id,itemName:ni.name,addQty:(eSn?1:rQty),remaining:ni.qty});
+    };
+    // --- Same-P/N or same-name rows: use the user's decision dropdown ---
     if(r.status==="cpn"||r.status==="cname"){
       var dec=decisions[i]||"skip";
       if(dec==="skip"){sk++;return;}
       if(dec==="merge"&&r.match){
-        // Merge into the existing matched item
-        var addQ=parseInt(r.row.qty)||0;
-        var rSn=(r.row.sn||"").trim();
-        if(rSn){
-          if(!Array.isArray(r.match.serials))r.match.serials=r.match.sn?[String(r.match.sn).trim()]:[];
-          if(r.match.serials.indexOf(rSn)<0)r.match.serials.push(rSn);
-          if(!r.match.sn)r.match.sn=rSn;
-          var mLoc=(r.row.location||"").trim();
-          if(mLoc){if(!r.match.serialLocations)r.match.serialLocations={};r.match.serialLocations[rSn]=mLoc;}
-          var mBox=(r.row.floor||"").trim();
-          if(mBox){if(!r.match.serialBoxes)r.match.serialBoxes={};r.match.serialBoxes[rSn]=mBox;}
-          r.match.qty=r.match.serials.length;
-        } else {
-          r.match.qty=(parseInt(r.match.qty)||0)+addQ;
-        }
-        up++;
-        importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:(rSn?1:addQ),remaining:r.match.qty});
+        var added=mergeSerialIntoItem(r.match,eSn,eLoc,eBox,eExp,eNote,rQty);up++;
+        importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:added,remaining:r.match.qty});
         return;
       }
-      // dec==="new" falls through to create a new item below
-      if(dec==="new"){
-        var loc2=(r.row.location||"").trim()||"Unknown";
-        var ni={id:String(Date.now()+i*7),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:r.row.sn,location:loc2,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:r.row.qty,initialQty:r.row.qty};
-        var nSn2=(r.row.sn||"").trim();
-        if(nSn2){ni.serials=[nSn2];if(loc2&&loc2!=="Unknown"){ni.serialLocations={};ni.serialLocations[nSn2]=loc2;}var nb=(r.row.floor||"").trim();if(nb){ni.serialBoxes={};ni.serialBoxes[nSn2]=nb;}}
-        S.items.push(ni);if(!S._newItems)S._newItems=[];S._newItems.push(ni.id);ad++;
-        importedTx.push({itemId:ni.id,itemName:ni.name,addQty:ni.qty,remaining:ni.qty});
-        return;
-      }
+      if(dec==="new"){buildNew(eLoc||"Unknown");return;}
       sk++;return;
     }
     if(skip[i]){sk++;return;}
+    // --- Exact match (same P/N + same name): merge the serial into the existing line ---
     if(r.status==="exact"){
-      // Same P/N + name: capture serial + box + location if provided, else just add qty
-      var eSn=(r.row.sn||"").trim();
-      var eLoc=(r.row.location||"").trim();
-      var eBox=(r.row.floor||"").trim();
-      if(eSn){
-        if(!Array.isArray(r.match.serials))r.match.serials=r.match.sn?[String(r.match.sn).trim()]:[];
-        if(r.match.serials.indexOf(eSn)<0)r.match.serials.push(eSn);
-        if(!r.match.sn)r.match.sn=eSn;
-        if(eLoc){if(!r.match.serialLocations)r.match.serialLocations={};r.match.serialLocations[eSn]=eLoc;}
-        if(eBox){if(!r.match.serialBoxes)r.match.serialBoxes={};r.match.serialBoxes[eSn]=eBox;}
-        r.match.qty=r.match.serials.length;
-      } else {
-        r.match.qty=(parseInt(r.match.qty)||0)+(parseInt(r.row.qty)||0);
-      }
-      up++;
-      importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:(eSn?1:(parseInt(r.row.qty)||0)),remaining:r.match.qty});
+      var added2=mergeSerialIntoItem(r.match,eSn,eLoc,eBox,eExp,eNote,rQty);up++;
+      importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:added2,remaining:r.match.qty});
+      return;
     }
-    else{
-      var loc="Unknown";
-      if(r.status==="new"){
-        // Priority: pasted location (from paste-table dropdown) -> preview dropdown override -> Unknown
-        var rowLoc=(r.row.location&&r.row.location.trim())?r.row.location.trim():"";
-        var li=document.getElementById("bulk-loc-"+i);
-        var pv=(li&&li.value&&li.value!=="__other__"&&li.value.trim())?li.value.trim():"";
-        loc=rowLoc||pv||"Unknown";
-      } else {
-        loc=r.location||r.row.location||"Unknown";
-      }
-    // Auto-merge: if an item with the SAME P/N and name already exists, merge into it
+    // --- New row: resolve location, then merge-into-existing-if-found, else create ---
+    var loc="Unknown";
+    if(r.status==="new"){
+      var rowLoc=(r.row.location&&r.row.location.trim())?r.row.location.trim():"";
+      var li=document.getElementById("bulk-loc-"+i);
+      var pv=(li&&li.value&&li.value!=="__other__"&&li.value.trim())?li.value.trim():"";
+      loc=rowLoc||pv||"Unknown";
+    } else {
+      loc=r.location||r.row.location||"Unknown";
+    }
     var mpn=(r.row.pn||"").trim().toLowerCase(), mname=(r.row.name||"").trim().toLowerCase();
     var mergeTarget=(mpn&&mpn!=="---")?S.items.find(function(it){return (it.pn||"").trim().toLowerCase()===mpn&&(it.name||"").trim().toLowerCase()===mname;}):null;
     if(mergeTarget){
-      // Merge this row's serial(s) + qty + location into the existing line
-      var rSn=(r.row.sn||"").trim();
-      var addQ=parseInt(r.row.qty)||0;
-      if(rSn){
-        if(!Array.isArray(mergeTarget.serials))mergeTarget.serials=mergeTarget.sn?[String(mergeTarget.sn).trim()]:[];
-        if(mergeTarget.serials.indexOf(rSn)<0)mergeTarget.serials.push(rSn);
-        if(!mergeTarget.sn)mergeTarget.sn=rSn;
-        // per-serial location
-        if(loc&&loc!=="Unknown"){if(!mergeTarget.serialLocations)mergeTarget.serialLocations={};mergeTarget.serialLocations[rSn]=loc;}
-        // per-serial box
-        var rBox=(r.row.floor||"").trim();
-        if(rBox){if(!mergeTarget.serialBoxes)mergeTarget.serialBoxes={};mergeTarget.serialBoxes[rSn]=rBox;}
-        // qty = number of serials
-        mergeTarget.qty=mergeTarget.serials.length;
-      } else {
-        mergeTarget.qty=(parseInt(mergeTarget.qty)||0)+addQ;
-      }
-      // If serials now span multiple locations, keep serialLocations; else collapse
-      if(mergeTarget.serialLocations){
-        var sset={};itemSerials(mergeTarget).forEach(function(sn){sset[mergeTarget.serialLocations[sn]||mergeTarget.location||""]=1;});
-        if(Object.keys(sset).length<2){mergeTarget.serialLocations=undefined;}
-      }
-      up++;
-      importedTx.push({itemId:mergeTarget.id,itemName:mergeTarget.name,addQty:(rSn?1:addQ),remaining:mergeTarget.qty});
+      var added3=mergeSerialIntoItem(mergeTarget,eSn,(eLoc||loc),eBox,eExp,eNote,rQty);up++;
+      importedTx.push({itemId:mergeTarget.id,itemName:mergeTarget.name,addQty:added3,remaining:mergeTarget.qty});
     } else {
-      var newItem={id:String(Date.now()+i*7),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:r.row.sn,location:loc,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:r.row.qty,initialQty:r.row.qty};
-      // If this new item has a serial + location/box, seed its per-serial maps
-      var nSn=(r.row.sn||"").trim();
-      if(nSn){
-        newItem.serials=[nSn];
-        if(loc&&loc!=="Unknown"){newItem.serialLocations={};newItem.serialLocations[nSn]=loc;}
-        var nBox=(r.row.floor||"").trim();
-        if(nBox){newItem.serialBoxes={};newItem.serialBoxes[nSn]=nBox;}
-      }
-      S.items.push(newItem);if(!S._newItems)S._newItems=[];S._newItems.push(newItem.id);ad++;
-      importedTx.push({itemId:newItem.id,itemName:newItem.name,addQty:newItem.qty,remaining:newItem.qty});
-    }}
+      buildNew(loc);
+    }
   });
   // Log a receive transaction for EVERY imported line (new or updated)
   importedTx.forEach(function(t){
@@ -2745,7 +2773,7 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS build v-BOX-3 (Serial/Location/Box table) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c OSPREY IMS v-SERIAL-EXP (per-serial location/box/expiry) ", "background:#1F4E79;color:#fff;padding:4px");
 console.log("%c\u2705 BUILD BOX-FIX-FINAL LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
 (function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 BOX-FIX";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
