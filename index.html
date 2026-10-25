@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-RRQ-4</title>
+<title>OSPREY IMS v-STABLE</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -460,17 +460,6 @@ function pushToSheets() {
     .catch(function(){ S._bulkPending=false; S._syncState="err"; showSyncBadge("err"); });
 }
 
-function toast(msg,kind){
-  try{
-    var col=kind==="err"?"var(--red)":kind==="ok"?"var(--green)":kind==="info"?"var(--amber)":"var(--tx)";
-    var bg=kind==="err"?"var(--rbg)":kind==="ok"?"var(--gbg)":"var(--abg)";
-    var t=document.createElement("div");
-    t.textContent=msg;
-    t.style.cssText="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:99999;max-width:88vw;background:var(--bg2);border:1px solid "+col+";color:"+col+";padding:11px 16px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 6px 24px rgba(0,0,0,.4);text-align:center";
-    document.body.appendChild(t);
-    setTimeout(function(){t.style.transition="opacity .4s";t.style.opacity="0";setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},400);}, kind==="err"?8000:5000);
-  }catch(e){}
-}
 function showSyncBadge(state) {
   var el = document.getElementById("sync-badge");
   if (!el) return;
@@ -1540,97 +1529,6 @@ function detailHTML(item){
 }
 
 // ── INVENTORY PAGE ────────────────────────────────────────────────────────────
-// ── RRQ cross-check with the Maintenance Manager ─────────────────────────────
-var MM_URL="https://script.google.com/macros/s/AKfycbwoRhcG8vujzhhGHT4YgjepivKU4JkSNMMbtzMueTdrqF_usIIorODgmQJK2_0XU_-q/exec";
-function mmApi(body){return fetch(MM_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)}).then(function(r){return r.json();});}
-function runRRQCheck(added){
-  if(!added||!added.length||!MM_URL)return;
-  toast("Checking requisitions in the Maintenance Manager\u2026","info");
-  fetch(MM_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"load"})}).then(function(r){return r.text();}).then(function(txt){
-    var resp=null;
-    try{resp=JSON.parse(txt);}catch(e){
-      toast("RRQ check: the Maintenance Manager replied with a non-JSON page \u2014 see console ([RRQ] raw).","err");
-      try{console.log("[RRQ] raw MM response (first 600 chars):\n"+String(txt).slice(0,600));}catch(_){}
-      return;
-    }
-    if(!resp){toast("RRQ check: the Maintenance Manager returned an empty response.","err");return;}
-    if(!resp.data||!Array.isArray(resp.data.rrqs)){toast("RRQ check: reached the Maintenance Manager, but no RRQ list came back (unexpected data shape \u2014 see console).","err");try{console.log("[RRQ] MM load response keys:",Object.keys(resp),"| full:",resp);}catch(e){}return;}
-    var open=resp.data.rrqs.filter(function(r){var s=String(r.status||"").toUpperCase();return s===""||s==="REQUESTED"||s==="PARTIALLY";});
-    var queue=[],seen={};
-    added.forEach(function(a){
-      var apn=(a.pn||"").trim().toLowerCase(), anm=(a.name||"").trim().toLowerCase();
-      open.forEach(function(r){
-        var rpn=(r.pn||"").trim().toLowerCase(), rnm=(r.item||"").trim().toLowerCase();
-        var mPn=apn&&apn!=="---"&&rpn&&apn===rpn, mNm=anm&&rnm&&anm===rnm;
-        if((mPn||mNm)&&!seen[r.id]){seen[r.id]=1;queue.push({rrq:r,added:a,by:(mPn&&mNm)?"P/N & name":(mPn?"P/N":"name")});}
-      });
-    });
-    if(!queue.length){toast("RRQ check: reached the Maintenance Manager \u2014 "+resp.data.rrqs.length+" RRQs ("+open.length+" open), but none match what you just added.","info");try{console.log("[RRQ] added:",added,"open RRQs:",open.map(function(r){return (r.pn||"")+" / "+(r.item||"");}));}catch(e){}return;}
-    S._rrqQueue=queue;S._rrqIdx=0;
-    toast(queue.length+" matching open requisition"+(queue.length>1?"s":"")+" found.","ok");
-    showNextRRQ();
-  }).catch(function(e){toast("RRQ check: couldn't reach the Maintenance Manager ("+((e&&e.message)?e.message:"network / CORS error")+").","err");try{console.log("[RRQ] fetch error:",e);}catch(_){}});
-}
-function showNextRRQ(){
-  if(!S._rrqQueue||S._rrqIdx>=S._rrqQueue.length){S._rrqQueue=null;return;}
-  showModal(buildRRQMatchModal(S._rrqQueue[S._rrqIdx]));
-}
-function buildRRQMatchModal(q){
-  var r=q.rrq,a=q.added;
-  var reqQty=parseInt(r.qty)||0, prev=parseInt(r.qtyRcvd)||0, remaining=Math.max(0,reqQty-prev);
-  var defRecv=Math.min((parseInt(a.qty)||0)||remaining||reqQty, (remaining||(parseInt(a.qty)||0)));
-  if(defRecv<=0)defRecv=parseInt(a.qty)||1;
-  return '<div class="mh"><div class="mt">Open RRQ match</div><button class="mc" id="modal-close-btn">x</button></div>'+
-    '<div class="mb">'+
-    '<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--tx)">'+
-      'You just added <b>'+esc(a.name)+'</b>'+(a.pn?' ('+esc(a.pn)+')':'')+' \u2014 qty <b>'+(parseInt(a.qty)||0)+'</b>.<br>'+
-      'This matches an open requisition (matched by '+esc(q.by)+'):'+
-    '</div>'+
-    '<div class="ds"><div class="dg2">'+
-      dfield2("RRQ item",esc(r.item||"---"))+
-      dfield2("P/N",esc(r.pn||"---"))+
-      dfield2("Requested on",r.date?fd(r.date):"---")+
-      dfield2("Form / PR",esc(r.form||"---"))+
-      dfield2("Site",esc(r.site||"---"))+
-      dfield2("Qty requested",reqQty||"---")+
-      dfield2("Already received",prev)+
-      dfield2("Status",esc(r.status||"REQUESTED"))+
-    '</div></div>'+
-    '<div class="ff" style="margin-top:10px"><label class="fl">Quantity received now</label><input id="rrq-recv" type="number" min="0" value="'+defRecv+'" style="width:140px"><div style="font-size:11px;color:var(--tx3);margin-top:4px">Updates the RRQ in the Maintenance Manager: adds this to received, sets date received to today, and sets status to '+(( prev+defRecv>=reqQty&&reqQty>0)?'<b>ARRIVED</b> (fully received)':'<b>PARTIALLY</b>')+'.</div></div>'+
-    '</div>'+
-    '<div class="mf"><span style="margin-right:auto;font-size:11px;color:var(--tx3)">'+(S._rrqIdx+1)+' of '+S._rrqQueue.length+'</span><button class="btn" data-action="rrq-skip">Skip</button><button class="btn bp" data-action="rrq-confirm">Mark received</button></div>';
-}
-function buildMMCodeModal(){
-  return '<div class="mh"><div class="mt">Maintenance Manager code</div><button class="mc" id="modal-close-btn">x</button></div>'+
-    '<div class="mb"><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">Enter your Maintenance Manager admin code to update the RRQ there. It is saved on this device so you only enter it once.</div>'+
-    '<input id="mm-code" type="password" placeholder="admin code" style="width:100%"></div>'+
-    '<div class="mf"><button class="btn" data-action="rrq-skip">Cancel</button><button class="btn bp" data-action="mm-code-save">Save &amp; continue</button></div>';
-}
-function confirmRRQReceive(){
-  if(!S._rrqQueue)return;
-  var N=parseInt((document.getElementById("rrq-recv")||{}).value)||0;
-  if(N<=0){alert("Enter a received quantity of 1 or more.");return;}
-  S._rrqPendingN=N;
-  var code=S._mmCode||(function(){try{return localStorage.getItem("osprey_mm_code")||"";}catch(e){return "";}})();
-  if(!code){showModal(buildMMCodeModal());return;}
-  doRRQSave(N,code);
-}
-function doRRQSave(N,code){
-  var q=S._rrqQueue[S._rrqIdx];
-  mmApi({action:"load"}).then(function(resp){
-    if(!resp||!resp.data||!Array.isArray(resp.data.rrqs)){alert("Couldn't reach the Maintenance Manager.");return;}
-    var data=resp.data;
-    var r=null;data.rrqs.forEach(function(x){if(String(x.id)===String(q.rrq.id))r=x;});
-    if(!r){alert("That RRQ no longer exists in the Maintenance Manager.");S._rrqIdx++;showNextRRQ();return;}
-    var reqQty=parseInt(r.qty)||0,prev=parseInt(r.qtyRcvd)||0;
-    r.qtyRcvd=prev+N; r.arrival=(q.added&&q.added.shipDate)||tod();
-    r.status=(reqQty>0&&r.qtyRcvd>=reqQty)?"ARRIVED":"PARTIALLY";
-    mmApi({action:"save",pwd:code,name:"Osprey IMS",data:data,lists:["rrqs"],changes:[]}).then(function(sr){
-      if(sr&&sr.ok){S._mmCode=code;try{localStorage.setItem("osprey_mm_code",code);}catch(e){}S._rrqIdx++;showNextRRQ();}
-      else{S._mmCode="";try{localStorage.removeItem("osprey_mm_code");}catch(e){}alert("The Maintenance Manager rejected the update (wrong admin code?). Please re-enter it.");showModal(buildMMCodeModal());}
-    }).catch(function(){alert("Couldn't save to the Maintenance Manager.");});
-  }).catch(function(){alert("Couldn't reach the Maintenance Manager.");});
-}
 function _shipMatcher(){
   var invQ=(S.fInvoice||"").trim().toLowerCase();var oldDate=S.fShipDate||"";var noInv=S.fNoInvoice;
   return function(d,inv){var okD=!oldDate||(d===oldDate);var okI;if(noInv)okI=!inv||String(inv).trim()==="";else okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);return okD&&okI;};
@@ -2343,12 +2241,10 @@ function submitItem(id){
       var _nt={id:String(Date.now()+3),itemId:item.id,itemName:item.name,type:"receive",qty:parseInt(item.qty)||0,date:(item.shipDate||rawSerialShip(item,item.sn)||tod()),person:S._fullName||(S.currentUser?S.currentUser.name:"Manual add"),purpose:"New item added"+(item.sn?" [S/N: "+item.sn+"]":""),reasonCode:"Add",remaining:item.qty,sn:item.sn||"",invoice:(item.invoice||rawSerialInv(item,item.sn)||""),ts:Date.now()};
       S.tx.push(_nt);S._pendingAddTx=_nt;
     }
-    S._rrqAfterSave=[{pn:item.pn,name:item.name,qty:item.qty,shipDate:nDate}];
   }
   saveAndPushItem(item);
   if(S._pendingAddTx){pushTx(S._pendingAddTx);S._pendingAddTx=null;}
   closeModal(); renderAll();
-  if(S._rrqAfterSave){var _ra=S._rrqAfterSave;S._rrqAfterSave=null;runRRQCheck(_ra);}
 }
 function showDuplicatePNDialog(existing, pending){
   var locO="";var seen={};
@@ -2415,7 +2311,6 @@ function mergeIntoExisting(id, pending){
   saveAndPushItem(item);
   pushTx(tx);
   closeModal();renderAll();
-  runRRQCheck([{pn:item.pn,name:item.name,qty:addQty,shipDate:dDate}]);
 }
 
 
@@ -2859,10 +2754,8 @@ function executeBulkImport(){
   importedTx.forEach(function(t){
     S.tx.push({id:String(Date.now()+(Math.random()*99999|0)),itemId:t.itemId,itemName:t.itemName,type:"receive",qty:t.addQty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import"+(arrInv?" (Inv "+arrInv+")":""),reasonCode:"Import",remaining:t.remaining,serial:t.serial||"",invoice:arrInv,ts:Date.now()});
   });
-  var _rrqAdd=importedTx.map(function(t){var it=S.items.find(function(x){return x.id===t.itemId;});return {pn:it?it.pn:"",name:t.itemName,qty:t.addQty,shipDate:arrDate};});
   save();_bulkMatches=[];if(syncStatus()){showSyncBadge("saving");pushToSheets();}
   showImportDone(ad,up,sk);
-  runRRQCheck(_rrqAdd);
 }
 
 document.addEventListener("paste",function(ev){
@@ -3197,9 +3090,6 @@ return;}
     if(a==="tx-edit"){if(!canAdmin())return;var _te=el.getAttribute("data-txid");S.modal={type:"txedit",id:_te};showModal(buildTxEditModal(_te));return;}
     if(a==="tx-add"){if(!canAdmin())return;S.modal={type:"txadd"};showModal(buildTxEditModal(null));return;}
     if(a==="tx-save"){if(!canAdmin())return;submitTxEdit(el.getAttribute("data-txid")||null);return;}
-    if(a==="rrq-confirm"){confirmRRQReceive();return;}
-    if(a==="rrq-skip"){if(S._rrqQueue){S._rrqIdx++;showNextRRQ();}else closeModal();return;}
-    if(a==="mm-code-save"){var _mc=((document.getElementById("mm-code")||{}).value||"").trim();if(!_mc){alert("Enter the code.");return;}S._mmCode=_mc;try{localStorage.setItem("osprey_mm_code",_mc);}catch(e){}doRRQSave(S._rrqPendingN,_mc);return;}
     if(a==="tx-delete"){if(!canAdmin())return;deleteTxRecord(el.getAttribute("data-txid"));return;}
     return;
   }
@@ -3368,9 +3258,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-RRQ-4 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD RRQ-4 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RRQ-4";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-STABLE (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD STABLE LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 STABLE";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
