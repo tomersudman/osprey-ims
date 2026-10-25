@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-RRQ-3</title>
+<title>OSPREY IMS v-RRQ-4</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1546,9 +1546,15 @@ function mmApi(body){return fetch(MM_URL,{method:"POST",headers:{"Content-Type":
 function runRRQCheck(added){
   if(!added||!added.length||!MM_URL)return;
   toast("Checking requisitions in the Maintenance Manager\u2026","info");
-  mmApi({action:"load"}).then(function(resp){
+  fetch(MM_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"load"})}).then(function(r){return r.text();}).then(function(txt){
+    var resp=null;
+    try{resp=JSON.parse(txt);}catch(e){
+      toast("RRQ check: the Maintenance Manager replied with a non-JSON page \u2014 see console ([RRQ] raw).","err");
+      try{console.log("[RRQ] raw MM response (first 600 chars):\n"+String(txt).slice(0,600));}catch(_){}
+      return;
+    }
     if(!resp){toast("RRQ check: the Maintenance Manager returned an empty response.","err");return;}
-    if(!resp.data||!Array.isArray(resp.data.rrqs)){toast("RRQ check: reached the Maintenance Manager, but no RRQ list came back (unexpected data shape \u2014 see console).","err");try{console.log("[RRQ] MM load response:",resp);}catch(e){}return;}
+    if(!resp.data||!Array.isArray(resp.data.rrqs)){toast("RRQ check: reached the Maintenance Manager, but no RRQ list came back (unexpected data shape \u2014 see console).","err");try{console.log("[RRQ] MM load response keys:",Object.keys(resp),"| full:",resp);}catch(e){}return;}
     var open=resp.data.rrqs.filter(function(r){var s=String(r.status||"").toUpperCase();return s===""||s==="REQUESTED"||s==="PARTIALLY";});
     var queue=[],seen={};
     added.forEach(function(a){
@@ -3362,9 +3368,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-RRQ-3 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD RRQ-3 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RRQ-3";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-RRQ-4 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD RRQ-4 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RRQ-4";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
