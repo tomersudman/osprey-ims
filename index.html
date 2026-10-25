@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-LOTS-6</title>
+<title>OSPREY IMS v-RRQ-2</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -369,6 +369,33 @@ var SYNC_INTERVAL = null;
 
 function syncStatus() { return SCRIPT_URL && SCRIPT_URL.indexOf("script.google.com") >= 0; }
 
+function normalizeSheetItems(items){
+  (items||[]).forEach(function(it){
+    if(typeof it.serials==="string"&&it.serials.trim()){it.serials=it.serials.split(/[\n,]+/).map(function(s){return s.trim();}).filter(function(s){return s;});}
+    if(Array.isArray(it.serials)){it.serials=it.serials.map(function(s){return String(s).trim();});}
+    if(it.sn!=null&&it.sn!=="")it.sn=String(it.sn).trim();
+    ["serialLocations","serialBoxes","serialExpiry","serialNotes","serialShipDate","serialInvoice"].forEach(function(k){
+      if(typeof it[k]==="string"&&it[k].trim()){try{it[k]=JSON.parse(it[k]);}catch(e){delete it[k];}}
+    });
+    if(typeof it.lots==="string"&&it.lots.trim()){try{it.lots=JSON.parse(it.lots);}catch(e){delete it.lots;}}
+    if(!Array.isArray(it.lots))delete it.lots;
+  });
+  return items;
+}
+function markDirty(id){if(!S._dirtyItems)S._dirtyItems={};if(id!=null)S._dirtyItems[id]=1;S._lastWriteTs=Date.now();}
+function clearDirty(id){if(S._dirtyItems&&id!=null)delete S._dirtyItems[id];}
+// Merge freshly-synced items over local state, but never clobber items with unsynced local edits
+function mergeSyncedItems(incoming){
+  var dirty=S._dirtyItems||{};
+  var inById={}; incoming.forEach(function(it){inById[it.id]=it;});
+  var merged=incoming.map(function(it){
+    if(dirty[it.id]){var loc=S.items.find(function(x){return x.id===it.id;});return loc||it;}
+    return it;
+  });
+  // keep brand-new local items not yet on the server
+  Object.keys(dirty).forEach(function(id){if(!inById[id]){var loc=S.items.find(function(x){return x.id===id;});if(loc)merged.push(loc);}});
+  return merged;
+}
 function loadFromSheets(callback) {
   if (!syncStatus()) { if(callback) callback(false); return; }
   showSyncBadge("loading");
@@ -377,20 +404,8 @@ function loadFromSheets(callback) {
     .then(function(d){
       if (d.items && d.items.length) {
         // Normalize serials to arrays and parse serialBoxes/serialLocations if they came as strings
-        d.items.forEach(function(it){
-          if(typeof it.serials==="string"&&it.serials.trim()){it.serials=it.serials.split(/[\n,]+/).map(function(s){return s.trim();}).filter(function(s){return s;});}
-          if(Array.isArray(it.serials)){it.serials=it.serials.map(function(s){return String(s).trim();});}
-          if(it.sn!=null&&it.sn!=="")it.sn=String(it.sn).trim();
-          if(typeof it.serialLocations==="string"&&it.serialLocations.trim()){try{it.serialLocations=JSON.parse(it.serialLocations);}catch(e){delete it.serialLocations;}}
-          if(typeof it.serialBoxes==="string"&&it.serialBoxes.trim()){try{it.serialBoxes=JSON.parse(it.serialBoxes);}catch(e){delete it.serialBoxes;}}
-          if(typeof it.serialExpiry==="string"&&it.serialExpiry.trim()){try{it.serialExpiry=JSON.parse(it.serialExpiry);}catch(e){delete it.serialExpiry;}}
-          if(typeof it.serialNotes==="string"&&it.serialNotes.trim()){try{it.serialNotes=JSON.parse(it.serialNotes);}catch(e){delete it.serialNotes;}}
-          if(typeof it.serialShipDate==="string"&&it.serialShipDate.trim()){try{it.serialShipDate=JSON.parse(it.serialShipDate);}catch(e){delete it.serialShipDate;}}
-          if(typeof it.serialInvoice==="string"&&it.serialInvoice.trim()){try{it.serialInvoice=JSON.parse(it.serialInvoice);}catch(e){delete it.serialInvoice;}}
-          if(typeof it.lots==="string"&&it.lots.trim()){try{it.lots=JSON.parse(it.lots);}catch(e){delete it.lots;}}
-          if(!Array.isArray(it.lots))delete it.lots;
-        });
-        S.items = d.items;
+        normalizeSheetItems(d.items);
+        S.items = mergeSyncedItems(d.items);
         S.tx    = d.tx    || [];
         S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);
         if (d.users && d.users.length) S.users = d.users;
@@ -416,31 +431,33 @@ function pushItem(item) {
     method:"POST", headers:{"Content-Type":"text/plain"},
     body: JSON.stringify({action:"saveItem", item:item})
   }).then(function(r){return r.json();})
-    .then(function(d){ S._syncState="ok"; showSyncBadge("ok"); })
+    .then(function(d){ if(d&&d.ok!==false){clearDirty(item&&item.id);} S._syncState="ok"; showSyncBadge("ok"); })
     .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
 }
 
 // Push a single new transaction to Sheets (append)
 function pushTx(tx) {
   if (!syncStatus()) return;
+  if(tx&&tx.id){if(!S._dirtyTx)S._dirtyTx={};S._dirtyTx[tx.id]=1;S._lastWriteTs=Date.now();}
   fetch(SCRIPT_URL, {
     method:"POST", headers:{"Content-Type":"text/plain"},
     body: JSON.stringify({action:"saveTx", tx:tx})
   }).then(function(r){return r.json();})
-    .then(function(d){ S._syncState="ok"; showSyncBadge("ok"); })
+    .then(function(d){ if(d&&d.ok!==false&&tx&&tx.id&&S._dirtyTx)delete S._dirtyTx[tx.id]; S._syncState="ok"; showSyncBadge("ok"); })
     .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
 }
 
 // Full overwrite — only used for initial data seed from Users tab
 function pushToSheets() {
   if (!syncStatus()) return;
+  S._bulkPending=true; S._lastWriteTs=Date.now();
   showSyncBadge("saving");
   fetch(SCRIPT_URL, {
     method:"POST", headers:{"Content-Type":"text/plain"},
     body: JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users, rma:S.rma})
   }).then(function(r){return r.json();})
-    .then(function(d){ S._syncState=d.ok?"ok":"err"; showSyncBadge(d.ok?"ok":"err"); })
-    .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
+    .then(function(d){ if(d&&d.ok){S._dirtyItems={};S._dirtyTx={};} S._bulkPending=false; S._syncState=d.ok?"ok":"err"; showSyncBadge(d.ok?"ok":"err"); })
+    .catch(function(){ S._bulkPending=false; S._syncState="err"; showSyncBadge("err"); });
 }
 
 function showSyncBadge(state) {
@@ -462,7 +479,25 @@ function showSyncBadge(state) {
 function startAutoSync() {
   if (!syncStatus()) return;
   if (SYNC_INTERVAL) clearInterval(SYNC_INTERVAL);
-  SYNC_INTERVAL = setInterval(function(){if(!syncStatus())return;fetch(SCRIPT_URL+"?action=getAll",{method:"GET"}).then(function(r){return r.json();}).then(function(d){if(d.items&&d.items.length){S.items=d.items;S.tx=d.tx||[];S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);if(d.users&&d.users.length)S.users=d.users;showSyncBadge("ok");if(S.tab!=="bulk")renderPage();}}).catch(function(){showSyncBadge("err");});},60000);
+  SYNC_INTERVAL = setInterval(function(){
+    if(!syncStatus())return;
+    if(S._bulkPending)return;
+    var md=document.getElementById("md");
+    if(md&&md.children.length)return; // a modal is open — don't clobber an in-progress edit
+    fetch(SCRIPT_URL+"?action=getAll",{method:"GET"}).then(function(r){return r.json();}).then(function(d){
+      if(d.items&&d.items.length){
+        normalizeSheetItems(d.items);
+        S.items=mergeSyncedItems(d.items);
+        var inTx={};(d.tx||[]).forEach(function(t){inTx[t.id]=1;});
+        var localOnly=(S.tx||[]).filter(function(t){return S._dirtyTx&&S._dirtyTx[t.id]&&!inTx[t.id];});
+        S.tx=(d.tx||[]).concat(localOnly);
+        S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);
+        if(d.users&&d.users.length)S.users=d.users;
+        showSyncBadge("ok");
+        if(S.tab!=="bulk")renderPage();
+      }
+    }).catch(function(){showSyncBadge("err");});
+  },60000);
 }
 
 function load() {
@@ -491,6 +526,7 @@ function save() {
 // Save item locally + push just that item to Sheets
 function saveAndPushItem(item) {
   save();
+  markDirty(item&&item.id);
   showSyncBadge("saving");
   pushItem(item);
 }
@@ -600,6 +636,9 @@ function stampShipMeta(item,sn,date,inv){
 // raw per-serial meta (no item-level fallback) - used for shipment filtering
 function rawSerialShip(item,sn){if(!item.serialShipDate)return "";var k=String(sn).trim();return (item.serialShipDate[sn]!=null?item.serialShipDate[sn]:(item.serialShipDate[k]!=null?item.serialShipDate[k]:""));}
 function rawSerialInv(item,sn){if(!item.serialInvoice)return "";var k=String(sn).trim();return (item.serialInvoice[sn]!=null?item.serialInvoice[sn]:(item.serialInvoice[k]!=null?item.serialInvoice[k]:""));}
+// Representative location/box shown for an item (derives from its serials when serialized & non-split)
+function itemDisplayLoc(item){var s=itemSerials(item);if(s.length){var l=serialLoc(item,s[0]);if(s.every(function(sn){return serialLoc(item,sn)===l;})&&l&&l!=="Unknown")return l;}return item.location||"";}
+function itemDisplayBox(item){var s=itemSerials(item);if(s.length){var b=serialBox(item,s[0]);if(s.every(function(sn){return serialBox(item,sn)===b;})&&b)return b;}return item.floor||"";}
 
 // ── NON-SERIAL LOTS (batches: qty + location/box/expiry/comment) ──────────────
 function itemLots(item){return Array.isArray(item.lots)?item.lots:[];}
@@ -715,7 +754,7 @@ function fd(iso) {
   return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
 function tod() { var d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
-var EXTRA_LOCATIONS = ["STORAGE 2 - 1-A","STORAGE 2 - 1-B","STORAGE 2 - 1-C","STORAGE 2 - 2-A","STORAGE 2 - 2-B","STORAGE 2 - 2-C","STORAGE 2 - 3-A","STORAGE 2 - 3-B","STORAGE 2 - 3-C","STORAGE 2 - 4-A","STORAGE 2 - 4-B","STORAGE 2 - 4-C","STORAGE 2 - 5-A","STORAGE 2 - 5-B","STORAGE 2 - 5-C","STORAGE 2 - 6-A","STORAGE 2 - 6-B","STORAGE 2 - 6-C","STORAGE 2 - 7-A","STORAGE 2 - 7-B","STORAGE 2 - 7-C","STORAGE 2 - 8-A","STORAGE 2 - 8-B","STORAGE 2 - 8-C"];
+var EXTRA_LOCATIONS = ["STORAGE 1 - 4-A","STORAGE 1 - 4-B","STORAGE 1 - 4-C","STORAGE 2 - 1-A","STORAGE 2 - 1-B","STORAGE 2 - 1-C","STORAGE 2 - 2-A","STORAGE 2 - 2-B","STORAGE 2 - 2-C","STORAGE 2 - 3-A","STORAGE 2 - 3-B","STORAGE 2 - 3-C","STORAGE 2 - 4-A","STORAGE 2 - 4-B","STORAGE 2 - 4-C","STORAGE 2 - 5-A","STORAGE 2 - 5-B","STORAGE 2 - 5-C","STORAGE 2 - 6-A","STORAGE 2 - 6-B","STORAGE 2 - 6-C","STORAGE 2 - 7-A","STORAGE 2 - 7-B","STORAGE 2 - 7-C","STORAGE 2 - 8-A","STORAGE 2 - 8-B","STORAGE 2 - 8-C"];
 var EXTRA_SUBSYS = ["MATERIALS","OTHER"];
 var SUBSYS_ORDER = ["CONSUMABLES", "MATERIALS", "ENGINE SPARES", "UAV SPARES", "GCS SPARES", "GCS MAINTENANCE", "GDT SPARES", "GSE", "IGCS 752", "SPECTRO OL SPARES", "PROPELLER", "UAV CALIBRATION TOOL", "System", "OTHER"];
 function uniq(f) {
@@ -1452,10 +1491,10 @@ function detailHTML(item){
       var notes;
       if(t.reasonCode==="Import"||t.reasonCode==="Restock"||t.reasonCode==="Add"){
         var _base=t.reasonCode==="Import"?"Shipment import":(t.reasonCode==="Restock"?"Restock":"New item");
-        notes=_base+(t.sn?" [S/N: "+esc(t.sn)+"]":"")+(t.invoice?" \u2013 invoice "+esc(t.invoice):"")+" \u2013 "+esc(fd(t.date));
+        notes=_base+(t.sn?" [S/N: "+esc(t.sn)+"]":"")+(t.invoice?" \u2013 PL "+esc(t.invoice):"")+" \u2013 "+esc(fd(t.date));
       } else {
         notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
-        if(t.invoice)notes+=" \u2013 invoice "+esc(t.invoice);
+        if(t.invoice)notes+=" \u2013 PL "+esc(t.invoice);
       }
       tl+='<div class="tlr"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span></div>';
     });
@@ -1475,8 +1514,8 @@ function detailHTML(item){
     '</div>'+
     (showTable?serialLocationSection(item):showLotTable?lotSection(item):
       '<div class="ds"><div class="dst">Placement</div><div class="dg2">'+
-      dfield2("Location",item.location?'<span class="loctag">'+esc(item.location)+'</span>':'<span style="color:var(--tx3)">---</span>')+
-      dfield2("Box",item.floor?esc(item.floor):'<span style="color:var(--tx3)">---</span>')+
+      dfield2("Location",itemDisplayLoc(item)?'<span class="loctag">'+esc(itemDisplayLoc(item))+'</span>':'<span style="color:var(--tx3)">---</span>')+
+      dfield2("Box",itemDisplayBox(item)?esc(itemDisplayBox(item)):'<span style="color:var(--tx3)">---</span>')+
       dfield2("Expiry",ecell(item))+
       (isSerialized(item)?dfield2(itemSerials(item).length>1?"S/N(s)":"S/N",'<span style="font-family:monospace;font-size:12px">'+itemSerials(item).map(esc).join(", ")+'</span>'):'')+
       '</div>'+
@@ -1490,43 +1529,142 @@ function detailHTML(item){
 }
 
 // ── INVENTORY PAGE ────────────────────────────────────────────────────────────
-function setInvoiceForShipment(){
-  var cur=S.fNoInvoice?"":(S.fInvoice||"");
-  var newInv=prompt("Invoice number to assign to this shipment"+(S.fShipDate?" ("+fdate(S.fShipDate)+")":"")+":", cur);
-  if(newInv==null)return;
-  newInv=newInv.trim();
-  var invQ=(S.fInvoice||"").trim().toLowerCase();
-  var match=function(d,inv){
-    var okD=!S.fShipDate||(d===S.fShipDate);
-    var okI;
-    if(S.fNoInvoice)okI=!inv||String(inv).trim()==="";
-    else okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);
-    return okD&&okI;
-  };
+// ── RRQ cross-check with the Maintenance Manager ─────────────────────────────
+var MM_URL="https://script.google.com/macros/s/AKfycbwoRhcG8vujzhhGHT4YgjepivKU4JkSNMMbtzMueTdrqF_usIIorODgmQJK2_0XU_-q/exec";
+function mmApi(body){return fetch(MM_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)}).then(function(r){return r.json();});}
+function runRRQCheck(added){
+  if(!added||!added.length||!MM_URL)return;
+  mmApi({action:"load"}).then(function(resp){
+    if(!resp||!resp.data||!Array.isArray(resp.data.rrqs))return;
+    var open=resp.data.rrqs.filter(function(r){var s=String(r.status||"").toUpperCase();return s===""||s==="REQUESTED"||s==="PARTIALLY";});
+    var queue=[],seen={};
+    added.forEach(function(a){
+      var apn=(a.pn||"").trim().toLowerCase(), anm=(a.name||"").trim().toLowerCase();
+      open.forEach(function(r){
+        var rpn=(r.pn||"").trim().toLowerCase(), rnm=(r.item||"").trim().toLowerCase();
+        var mPn=apn&&apn!=="---"&&rpn&&apn===rpn, mNm=anm&&rnm&&anm===rnm;
+        if((mPn||mNm)&&!seen[r.id]){seen[r.id]=1;queue.push({rrq:r,added:a,by:(mPn&&mNm)?"P/N & name":(mPn?"P/N":"name")});}
+      });
+    });
+    if(!queue.length)return;
+    S._rrqQueue=queue;S._rrqIdx=0;
+    showNextRRQ();
+  }).catch(function(){});
+}
+function showNextRRQ(){
+  if(!S._rrqQueue||S._rrqIdx>=S._rrqQueue.length){S._rrqQueue=null;return;}
+  showModal(buildRRQMatchModal(S._rrqQueue[S._rrqIdx]));
+}
+function buildRRQMatchModal(q){
+  var r=q.rrq,a=q.added;
+  var reqQty=parseInt(r.qty)||0, prev=parseInt(r.qtyRcvd)||0, remaining=Math.max(0,reqQty-prev);
+  var defRecv=Math.min((parseInt(a.qty)||0)||remaining||reqQty, (remaining||(parseInt(a.qty)||0)));
+  if(defRecv<=0)defRecv=parseInt(a.qty)||1;
+  return '<div class="mh"><div class="mt">Open RRQ match</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb">'+
+    '<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--tx)">'+
+      'You just added <b>'+esc(a.name)+'</b>'+(a.pn?' ('+esc(a.pn)+')':'')+' \u2014 qty <b>'+(parseInt(a.qty)||0)+'</b>.<br>'+
+      'This matches an open requisition (matched by '+esc(q.by)+'):'+
+    '</div>'+
+    '<div class="ds"><div class="dg2">'+
+      dfield2("RRQ item",esc(r.item||"---"))+
+      dfield2("P/N",esc(r.pn||"---"))+
+      dfield2("Requested on",r.date?fd(r.date):"---")+
+      dfield2("Form / PR",esc(r.form||"---"))+
+      dfield2("Site",esc(r.site||"---"))+
+      dfield2("Qty requested",reqQty||"---")+
+      dfield2("Already received",prev)+
+      dfield2("Status",esc(r.status||"REQUESTED"))+
+    '</div></div>'+
+    '<div class="ff" style="margin-top:10px"><label class="fl">Quantity received now</label><input id="rrq-recv" type="number" min="0" value="'+defRecv+'" style="width:140px"><div style="font-size:11px;color:var(--tx3);margin-top:4px">Updates the RRQ in the Maintenance Manager: adds this to received, sets date received to today, and sets status to '+(( prev+defRecv>=reqQty&&reqQty>0)?'<b>ARRIVED</b> (fully received)':'<b>PARTIALLY</b>')+'.</div></div>'+
+    '</div>'+
+    '<div class="mf"><span style="margin-right:auto;font-size:11px;color:var(--tx3)">'+(S._rrqIdx+1)+' of '+S._rrqQueue.length+'</span><button class="btn" data-action="rrq-skip">Skip</button><button class="btn bp" data-action="rrq-confirm">Mark received</button></div>';
+}
+function buildMMCodeModal(){
+  return '<div class="mh"><div class="mt">Maintenance Manager code</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">Enter your Maintenance Manager admin code to update the RRQ there. It is saved on this device so you only enter it once.</div>'+
+    '<input id="mm-code" type="password" placeholder="admin code" style="width:100%"></div>'+
+    '<div class="mf"><button class="btn" data-action="rrq-skip">Cancel</button><button class="btn bp" data-action="mm-code-save">Save &amp; continue</button></div>';
+}
+function confirmRRQReceive(){
+  if(!S._rrqQueue)return;
+  var N=parseInt((document.getElementById("rrq-recv")||{}).value)||0;
+  if(N<=0){alert("Enter a received quantity of 1 or more.");return;}
+  S._rrqPendingN=N;
+  var code=S._mmCode||(function(){try{return localStorage.getItem("osprey_mm_code")||"";}catch(e){return "";}})();
+  if(!code){showModal(buildMMCodeModal());return;}
+  doRRQSave(N,code);
+}
+function doRRQSave(N,code){
+  var q=S._rrqQueue[S._rrqIdx];
+  mmApi({action:"load"}).then(function(resp){
+    if(!resp||!resp.data||!Array.isArray(resp.data.rrqs)){alert("Couldn't reach the Maintenance Manager.");return;}
+    var data=resp.data;
+    var r=null;data.rrqs.forEach(function(x){if(String(x.id)===String(q.rrq.id))r=x;});
+    if(!r){alert("That RRQ no longer exists in the Maintenance Manager.");S._rrqIdx++;showNextRRQ();return;}
+    var reqQty=parseInt(r.qty)||0,prev=parseInt(r.qtyRcvd)||0;
+    r.qtyRcvd=prev+N; r.arrival=(q.added&&q.added.shipDate)||tod();
+    r.status=(reqQty>0&&r.qtyRcvd>=reqQty)?"ARRIVED":"PARTIALLY";
+    mmApi({action:"save",pwd:code,name:"Osprey IMS",data:data,lists:["rrqs"],changes:[]}).then(function(sr){
+      if(sr&&sr.ok){S._mmCode=code;try{localStorage.setItem("osprey_mm_code",code);}catch(e){}S._rrqIdx++;showNextRRQ();}
+      else{S._mmCode="";try{localStorage.removeItem("osprey_mm_code");}catch(e){}alert("The Maintenance Manager rejected the update (wrong admin code?). Please re-enter it.");showModal(buildMMCodeModal());}
+    }).catch(function(){alert("Couldn't save to the Maintenance Manager.");});
+  }).catch(function(){alert("Couldn't reach the Maintenance Manager.");});
+}
+function _shipMatcher(){
+  var invQ=(S.fInvoice||"").trim().toLowerCase();var oldDate=S.fShipDate||"";var noInv=S.fNoInvoice;
+  return function(d,inv){var okD=!oldDate||(d===oldDate);var okI;if(noInv)okI=!inv||String(inv).trim()==="";else okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);return okD&&okI;};
+}
+function _countShipment(match){
+  var n=0;
+  S.items.forEach(function(item){
+    var sers=itemSerials(item);
+    if(sers.length){sers.forEach(function(sn){if(match(rawSerialShip(item,sn),rawSerialInv(item,sn)))n++;});}
+    else if(Array.isArray(item.lots)&&item.lots.length){item.lots.forEach(function(L){if(match(L.shipDate||"",L.invoice||""))n++;});}
+    else{if(match(item.shipDate||"",item.invoice||""))n++;}
+  });
+  return n;
+}
+function buildEditShipmentModal(){
+  var curPL=S.fNoInvoice?"":(S.fInvoice||"");
+  var curDate=S.fShipDate||"";
+  var n=_countShipment(_shipMatcher());
+  return '<div class="mh"><div class="mt">Edit shipment</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb">'+
+    '<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Change the PL (packing list) number or the date for this shipment. The change applies to <b style="color:var(--tx)">'+n+'</b> line(s) \u2014 every serial, batch and transaction currently in this shipment.</div>'+
+    '<div class="fg">'+
+    '<div><label class="fl">PL number</label><input id="es-pl" type="text" value="'+esc(curPL)+'" placeholder="packing list # (blank = no PL)" style="width:100%"></div>'+
+    '<div><label class="fl">Shipment date</label><input id="es-date" type="date" value="'+esc(curDate)+'" style="width:100%"></div>'+
+    '</div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn bp" id="btn-es-save">Save shipment</button></div>';
+}
+function submitEditShipment(){
+  var newPL=((document.getElementById("es-pl")||{}).value||"").trim();
+  var newDate=((document.getElementById("es-date")||{}).value||"").trim();
+  var match=_shipMatcher();
   var n=0;
   S.items.forEach(function(item){
     var sers=itemSerials(item);
     if(sers.length){
       sers.forEach(function(sn){
         if(match(rawSerialShip(item,sn),rawSerialInv(item,sn))){
-          if(!item.serialInvoice)item.serialInvoice={};
           var k=String(sn).trim();
-          if(newInv)item.serialInvoice[k]=newInv; else delete item.serialInvoice[k];
-          n++;
+          if(!item.serialInvoice)item.serialInvoice={}; if(newPL)item.serialInvoice[k]=newPL; else delete item.serialInvoice[k];
+          if(newDate){if(!item.serialShipDate)item.serialShipDate={};item.serialShipDate[k]=newDate;}
+          markDirty(item.id); n++;
         }
       });
     } else if(Array.isArray(item.lots)&&item.lots.length){
-      item.lots.forEach(function(L){if(match(L.shipDate||"",L.invoice||"")){L.invoice=newInv;n++;}});
+      item.lots.forEach(function(L){if(match(L.shipDate||"",L.invoice||"")){L.invoice=newPL; if(newDate)L.shipDate=newDate; markDirty(item.id); n++;}});
     } else {
-      if(match(item.shipDate||"",item.invoice||"")){item.invoice=newInv;n++;}
+      if(match(item.shipDate||"",item.invoice||"")){item.invoice=newPL; if(newDate)item.shipDate=newDate; markDirty(item.id); n++;}
     }
   });
-  S.tx.forEach(function(t){if(t.type==="receive"&&match(t.date||"",t.invoice||"")){t.invoice=newInv;}});
-  // move the filter to follow the shipment
-  if(newInv){S.fNoInvoice=false;S.fInvoice=newInv;} 
+  S.tx.forEach(function(t){if(t.type==="receive"&&match(t.date||"",t.invoice||"")){t.invoice=newPL; if(newDate)t.date=newDate;}});
+  if(newPL){S.fNoInvoice=false;S.fInvoice=newPL;} else {S.fNoInvoice=true;S.fInvoice="";}
+  if(newDate)S.fShipDate=newDate;
   save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}
-  renderPage();
-  alert("Assigned invoice "+(newInv||"(none)")+" to "+n+" line(s) in this shipment.");
+  closeModal();renderPage();
 }
 function renderInventory(){
   var items=filt();
@@ -1548,7 +1686,7 @@ function renderInventory(){
   var noInvList=Object.keys(noInvDates).sort(function(a,b){return a<b?1:a>b?-1:0;});
   var invOpts='<option value="">All shipments</option>';
   invList.forEach(function(iv){invOpts+='<option value="'+esc(iv)+'"'+((!S.fNoInvoice&&S.fInvoice===iv)?" selected":"")+'>'+esc(iv)+(invMap[iv]?"  \u00b7  "+esc(fdate(invMap[iv])):"")+'</option>';});
-  noInvList.forEach(function(d){invOpts+='<option value="__noinv__'+esc(d)+'"'+((S.fNoInvoice&&S.fShipDate===d)?" selected":"")+'>No invoice  \u00b7  '+esc(fdate(d))+'</option>';});
+  noInvList.forEach(function(d){invOpts+='<option value="__noinv__'+esc(d)+'"'+((S.fNoInvoice&&S.fShipDate===d)?" selected":"")+'>No PL  \u00b7  '+esc(fdate(d))+'</option>';});
   var locs=uniq("location"),subs=uniq("subsys");
   var locO='<option value="">All locations</option>';
   locs.forEach(function(l){locO+='<option value="'+esc(l)+'"'+(S.fLoc===l?" selected":"")+'>'+esc(l)+'</option>';});
@@ -1560,7 +1698,7 @@ function renderInventory(){
   else{items.forEach(function(item){
     var tt=item.type?'<span class="tt tt'+item.type+'">'+item.type+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
     var sm=item.smr?'<span class="smrc">'+esc(item.smr)+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
-    var lc=item.location?'<span class="loctag">'+esc(item.location)+'</span>':'<span style="color:var(--tx3)">---</span>';
+    var _dloc=itemDisplayLoc(item);var lc=_dloc?'<span class="loctag">'+esc(_dloc)+'</span>':'<span style="color:var(--tx3)">---</span>';
     var boxc=item.floor?'<span style="font-size:12px;color:var(--tx2);font-family:monospace">'+esc(item.floor)+'</span>':'<span style="color:var(--tx3)">---</span>';
     rows+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'">'
       +'<td style="max-width:220px;font-weight:500">'+hl(item.name)+'</td>'
@@ -1663,9 +1801,9 @@ function renderInventory(){
     '<select id="fSub" style="width:105px">'+subO+'</select>'+
     '<select id="fExp" style="width:105px"><option value="">All expiry</option><option value="expiring"'+(S.fExp==="expiring"?" selected":"")+'>Expiring</option><option value="expired"'+(S.fExp==="expired"?" selected":"")+'>Expired</option></select>'+
     '<input id="fShipDate" type="date" value="'+esc(S.fShipDate||"")+'" title="Filter by shipment date" style="width:140px"'+(S.fShipDate?' class="bg"':'')+'>'+
-    '<select id="fInvoice" style="width:180px" title="Filter by invoice">'+invOpts+'</select>'+
+    '<select id="fInvoice" style="width:180px" title="Filter by PL / packing list">'+invOpts+'</select>'+
     (shipFilter?'<button class="btn sm" id="btn-clear-ship" style="border-color:var(--amber);color:var(--amber)">Clear shipment</button>':'')+
-    ((shipFilter&&canEdit())?'<button class="btn sm" id="btn-set-invoice" style="border-color:var(--green);color:var(--green)">Set invoice #</button>':'')+
+    ((shipFilter&&canEdit())?'<button class="btn sm" id="btn-edit-shipment" style="border-color:var(--green);color:var(--green)">Edit shipment</button>':'')+
     '<button class="btn bg sm" id="btn-xcsv">Excel</button>'+
     '<button class="btn sm" id="btn-bulk-labels">Download Labels</button>'+
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
@@ -1688,7 +1826,93 @@ function renderInventory(){
 }
 
 // ── LOG PAGE ──────────────────────────────────────────────────────────────────
+function txEffect(type,qty){return type==="receive"?(parseInt(qty)||0):-(parseInt(qty)||0);}
+function buildTxEditModal(txid){
+  var isAdd=!txid;
+  var t=isAdd?{type:"draw",qty:1,date:tod(),person:(S._fullName||(S.currentUser?S.currentUser.name:"")),reasonCode:"",purpose:"",itemId:""}:S.tx.find(function(x){return x.id===txid;});
+  if(!t){alert("Transaction not found.");return "";}
+  var item=S.items.find(function(i){return i.id===t.itemId;});
+  S._txEditItemId=t.itemId||""; S._txEditOldEffect=isAdd?0:txEffect(t.type,t.qty);
+  var itemField;
+  if(isAdd){
+    var sorted=S.items.slice().sort(function(a,b){return (a.name||"").toLowerCase()<(b.name||"").toLowerCase()?-1:1;});
+    var opts='<option value="">-- select item --</option>';
+    sorted.forEach(function(it){opts+='<option value="'+esc(it.id)+'">'+esc(it.name)+' ('+esc(it.pn)+')</option>';});
+    itemField='<div class="ff"><label class="fl">Item *</label><select id="tx-item" style="width:100%" onchange="txPreview()">'+opts+'</select></div>';
+  } else {
+    itemField='<div class="ff"><label class="fl">Item</label><input type="text" value="'+esc((item?item.name:t.itemName)+(item?" ("+item.pn+")":""))+'" disabled style="width:100%;opacity:.7"></div>';
+  }
+  var warn=(item&&(isSerialized(item)||(Array.isArray(item.lots)&&item.lots.length>1)))?'<div class="ff" style="font-size:11px;color:var(--amber)">\u26A0 This item tracks serials / batches \u2014 adjusting stock changes the total count only, not individual serials or batches.</div>':'';
+  return '<div class="mh" data-wide="1"><div class="mt">'+(isAdd?"Add transaction":"Edit transaction")+' <span style="font-size:11px;color:var(--tx3);font-weight:400">(admin)</span></div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div class="fg">'+
+    itemField+
+    '<div><label class="fl">Type *</label><select id="tx-type" style="width:100%" onchange="txPreview()"><option value="draw"'+(t.type==="draw"?' selected':'')+'>Draw (\u2212)</option><option value="receive"'+(t.type==="receive"?' selected':'')+'>Receive (+)</option></select></div>'+
+    '<div><label class="fl">Quantity *</label><input id="tx-qty" type="number" min="1" value="'+(parseInt(t.qty)||1)+'" oninput="txPreview()" style="width:100%"></div>'+
+    '<div><label class="fl">Date *</label><input id="tx-date" type="date" value="'+esc(t.date||tod())+'" style="width:100%"></div>'+
+    '<div><label class="fl">Person *</label><input id="tx-person" type="text" value="'+esc(t.person||"")+'" style="width:100%"></div>'+
+    '<div><label class="fl">Reason</label><input id="tx-reason" type="text" value="'+esc(t.reasonCode||"")+'" placeholder="e.g. Maintenance" list="tx-reason-dl" style="width:100%"><datalist id="tx-reason-dl">'+REASONS.map(function(r){return '<option value="'+esc(r)+'">';}).join('')+'</datalist></div>'+
+    '<div class="ff"><label class="fl">Note / content</label><input id="tx-note" type="text" value="'+esc(t.purpose||"")+'" style="width:100%"></div>'+
+    '<div class="ff" style="margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="tx-adjust" checked onchange="txPreview()"> Adjust current stock by this change</label><div id="tx-adjust-preview" style="font-size:12px;color:var(--tx2);margin-top:4px"></div></div>'+
+    warn+
+    '</div></div>'+
+    '<div class="mf">'+
+    (isAdd?'':'<button class="btn br" data-action="tx-delete" data-txid="'+esc(t.id)+'" style="margin-right:auto">Delete transaction</button>')+
+    '<button class="btn" id="modal-close-btn2">Cancel</button>'+
+    '<button class="btn bp" data-action="tx-save" data-txid="'+esc(isAdd?"":t.id)+'">'+(isAdd?"Add transaction":"Save changes")+'</button></div>';
+}
+function txPreview(){
+  var pv=document.getElementById("tx-adjust-preview"); if(!pv)return;
+  var adj=document.getElementById("tx-adjust");
+  if(adj&&!adj.checked){pv.textContent="Stock will not be changed \u2014 record only.";return;}
+  var itemId=S._txEditItemId; var isel=document.getElementById("tx-item"); if(isel)itemId=isel.value;
+  var item=S.items.find(function(i){return i.id===itemId;});
+  if(!item){pv.textContent="";return;}
+  var typ=(document.getElementById("tx-type")||{}).value;
+  var qty=parseInt((document.getElementById("tx-qty")||{}).value)||0;
+  var cur=parseInt(item.qty)||0;
+  var nq=Math.max(0, cur-(S._txEditOldEffect||0)+txEffect(typ,qty));
+  pv.textContent="Current stock: "+cur+" \u2192 "+nq;
+}
+function submitTxEdit(txid){
+  var isAdd=!txid;
+  var typ=(document.getElementById("tx-type")||{}).value||"draw";
+  var qty=parseInt((document.getElementById("tx-qty")||{}).value)||0;
+  var date=(document.getElementById("tx-date")||{}).value||tod();
+  var person=((document.getElementById("tx-person")||{}).value||"").trim();
+  var reason=((document.getElementById("tx-reason")||{}).value||"").trim();
+  var note=((document.getElementById("tx-note")||{}).value||"").trim();
+  var adjust=(document.getElementById("tx-adjust")||{}).checked;
+  if(qty<1){alert("Enter a quantity of 1 or more.");return;}
+  if(!person){alert("Enter the person name.");return;}
+  var itemId=isAdd?((document.getElementById("tx-item")||{}).value):S._txEditItemId;
+  var item=S.items.find(function(i){return i.id===itemId;});
+  if(isAdd&&!item){alert("Please select an item.");return;}
+  var oldEffect=isAdd?0:(S._txEditOldEffect||0);
+  if(item&&adjust){item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));markDirty(item.id);}
+  if(isAdd){
+    S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:typ,qty:qty,date:date,person:person,purpose:note,reasonCode:reason,remaining:(item?item.qty:0),sn:"",invoice:"",ts:Date.now()});
+  } else {
+    var t=S.tx.find(function(x){return x.id===txid;});
+    if(t){t.type=typ;t.qty=qty;t.date=date;t.person=person;t.reasonCode=reason;t.purpose=note;if(item&&adjust)t.remaining=item.qty;}
+  }
+  save();
+  if(syncStatus()){showSyncBadge("saving");pushToSheets();}
+  closeModal();renderAll();
+}
+function deleteTxRecord(txid){
+  var t=S.tx.find(function(x){return x.id===txid;});
+  if(!t)return;
+  if(!confirm("Delete this transaction? This cannot be undone."))return;
+  var item=S.items.find(function(i){return i.id===t.itemId;});
+  var adjust=item?confirm("Also reverse its effect on current stock?\n\nOK = adjust stock back (recommended)\nCancel = remove the record only, leave stock as-is"):false;
+  if(item&&adjust){item.qty=Math.max(0,(parseInt(item.qty)||0)-txEffect(t.type,t.qty));markDirty(item.id);}
+  S.tx=S.tx.filter(function(x){return x.id!==txid;});
+  save();
+  if(syncStatus()){showSyncBadge("saving");pushToSheets();}
+  closeModal();renderAll();
+}
 function renderLog(){
+  var adm=canAdmin();
   var allTxs=S.tx.slice().reverse();
   var logQ=(S._logSearch||"").toLowerCase();
   var txs=allTxs.filter(function(t){
@@ -1701,7 +1925,7 @@ function renderLog(){
       ||(t.reasonCode||"").toLowerCase().indexOf(logQ)>=0
       ||(t.purpose||"").toLowerCase().indexOf(logQ)>=0;
   });
-  var rows=!txs.length?'<tr><td colspan="8" class="empty">No transactions found.</td></tr>':"";
+  var rows=!txs.length?'<tr><td colspan="'+(adm?9:8)+'" class="empty">No transactions found.</td></tr>':"";
   txs.forEach(function(t){
     var item=S.items.find(function(i){return i.id===t.itemId;});
     rows+='<tr>'
@@ -1713,6 +1937,7 @@ function renderLog(){
       +'<td style="color:var(--tx2)">'+t.remaining+'</td>'
       +'<td style="font-weight:500">'+esc(t.person)+'</td>'
       +'<td style="color:var(--tx2);font-size:12px">'+esc(t.purpose||'---')+'</td>'
+      +(adm?'<td style="white-space:nowrap"><button class="btn sm" data-action="tx-edit" data-txid="'+esc(t.id)+'" style="padding:0 10px">Edit</button></td>':'')
       +'</tr>';
   });
     var _ls=esc(S._logSearch||'');
@@ -1729,8 +1954,9 @@ function renderLog(){
     +'<option value="receive"'+(S._logType==="receive"?' selected':'')+'>Receive only</option>'
     +'</select>'
     +'<input id="log-person-filter" type="text" placeholder="Person..." value="'+_lp+'" style="width:110px">'
+    +(adm?'<button class="btn bp sm" data-action="tx-add">+ Add transaction</button>':'')
     +'</div></div>'+
-    '<div class="tw tw-log"><table><thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Item</th><th>Qty</th><th>Remaining</th><th>Person</th><th>Purpose</th></tr></thead>'+
+    '<div class="tw tw-log"><table><thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Item</th><th>Qty</th><th>Remaining</th><th>Person</th><th>Purpose</th>'+(adm?'<th>Act</th>':'')+'</tr></thead>'+
     '<tbody>'+rows+'</tbody></table></div></div>';
 }
 
@@ -1896,7 +2122,7 @@ function buildItemModal(id){
     '<div><label class="fl">Location *</label><select id="m-location" style="width:100%" onchange="if(this.value===\'__other__\'){var nv=prompt(\'Enter new location:\');if(nv){var o=document.createElement(\'option\');o.value=nv;o.text=nv;o.selected=true;this.insertBefore(o,this.firstChild);}else{this.selectedIndex=0;}}"><option value="">-- select --</option>'+locO+'<option value="__other__">Other (type new)...</option></select></div>'+
     '<div><label class="fl">Box</label><input id="m-floor" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Expiry date</label><input id="m-expiry" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
-    (!isEdit?'<div><label class="fl">Shipment date</label><input id="m-shipdate" type="date" value="'+tod()+'" style="width:100%"></div><div><label class="fl">Invoice #</label><input id="m-invoice" type="text" placeholder="optional" style="width:100%"></div>':'')+
+    (!isEdit?'<div><label class="fl">Shipment date</label><input id="m-shipdate" type="date" value="'+tod()+'" style="width:100%"></div><div><label class="fl">PL #</label><input id="m-invoice" type="text" placeholder="optional" style="width:100%"></div>':'')+
     (!isEdit?'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="1" style="width:100%"></div>':'<div><label class="fl">Quantity *</label><input id="m-qty" type="number" min="0" value="'+esc(item.qty!=null?item.qty:1)+'" style="width:100%"></div>')+
     '<div class="ff"><label class="fl">Comments</label><textarea id="m-notes" rows="2" style="width:100%">'+esc(item.notes||"")+'</textarea></div>'))+
     '</div></div>'+
@@ -1975,6 +2201,7 @@ function submitTx(){
     }
   }
   var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",ts:Date.now()};
+  markDirty(item.id);
   S.tx.push(newTx);
   saveAndPushTx(newTx);
   pushItem(item); // also update item qty in sheet
@@ -2042,6 +2269,16 @@ function submitItem(id){
       snNoteInputs.forEach(function(inp){setSerialNote(item,inp.getAttribute("data-sn"),inp.value);});
     }
     if(hasSerTable)item.qty=itemSerials(item).length;
+    // Keep the item's shown location/box/expiry in sync with its serials
+    // (a non-split serialized item shows item.location in Placement / the inventory row)
+    if(hasSerTable&&isSerialized(item)){
+      var _sers=itemSerials(item);
+      if(_sers.length){
+        var _l0=serialLoc(item,_sers[0]); if(_l0&&_l0!=="Unknown")item.location=_l0;
+        var _b0=serialBox(item,_sers[0]); if(_b0)item.floor=_b0;
+        var _e0=serialExpiry(item,_sers[0]); if(_e0)item.expiry=_e0;
+      }
+    }
     var lotRows=document.querySelectorAll(".edit-lot-loc");
     if(lotRows.length){
       var newLots=[];
@@ -2086,10 +2323,12 @@ function submitItem(id){
       var _nt={id:String(Date.now()+3),itemId:item.id,itemName:item.name,type:"receive",qty:parseInt(item.qty)||0,date:(item.shipDate||rawSerialShip(item,item.sn)||tod()),person:S._fullName||(S.currentUser?S.currentUser.name:"Manual add"),purpose:"New item added"+(item.sn?" [S/N: "+item.sn+"]":""),reasonCode:"Add",remaining:item.qty,sn:item.sn||"",invoice:(item.invoice||rawSerialInv(item,item.sn)||""),ts:Date.now()};
       S.tx.push(_nt);S._pendingAddTx=_nt;
     }
+    S._rrqAfterSave=[{pn:item.pn,name:item.name,qty:item.qty,shipDate:nDate}];
   }
   saveAndPushItem(item);
   if(S._pendingAddTx){pushTx(S._pendingAddTx);S._pendingAddTx=null;}
   closeModal(); renderAll();
+  if(S._rrqAfterSave){var _ra=S._rrqAfterSave;S._rrqAfterSave=null;runRRQCheck(_ra);}
 }
 function showDuplicatePNDialog(existing, pending){
   var locO="";var seen={};
@@ -2109,7 +2348,7 @@ function showDuplicatePNDialog(existing, pending){
     '<div><label class="fl">Serial number (optional)</label><input id="dup-sn" type="text" value="'+esc(pending.sn||"")+'" placeholder="S/N of the unit(s) added" style="width:100%"></div>'+
     '<div><label class="fl">Location for this serial</label><input id="dup-loc" type="text" value="'+esc(pending.location||existing.location||"")+'" list="dup-locdl" style="width:100%"><datalist id="dup-locdl">'+locO+'</datalist></div>'+
     '<div><label class="fl">Shipment date *</label><input id="dup-date" type="date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" style="width:100%"></div>'+
-    '<div><label class="fl">Invoice #</label><input id="dup-invoice" type="text" placeholder="e.g. INV-2026-0142 (optional)" style="width:100%"></div>'+
+    '<div><label class="fl">PL #</label><input id="dup-invoice" type="text" placeholder="e.g. PL number (optional)" style="width:100%"></div>'+
     '</div>'+
     '<div style="font-size:11px;color:var(--tx3);margin-top:8px">Leave the serial blank if these units aren\'t serialized. The location can be the same as the existing one or different.</div>'+
     '</div>'+
@@ -2156,6 +2395,7 @@ function mergeIntoExisting(id, pending){
   saveAndPushItem(item);
   pushTx(tx);
   closeModal();renderAll();
+  runRRQCheck([{pn:item.pn,name:item.name,qty:addQty,shipDate:dDate}]);
 }
 
 
@@ -2440,7 +2680,7 @@ function renderBulkImport(){
     return'<td style="padding:2px 3px;width:'+COLW[ci]+'px"><input type="'+itype+'" class="bulk-cell" data-row="'+i+'" data-col="'+ci+'"'+extra+' style="width:100%;height:26px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:3px;padding:0 6px;font-size:12px"></td>';
   }).join('')+'</tr>';}
   return '<div class="card"><div class="ch"><div class="ctitle">Shipment Import</div><div style="display:flex;gap:8px"><button class="btn sm" id="btn-bulk-addrows">+ 20 rows</button><button class="btn bp" id="btn-bulk-import">Preview</button><button class="btn br sm" id="btn-bulk-clear">Clear</button></div></div>'
-    +'<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 6px;flex-wrap:wrap"><label style="font-size:12px;color:var(--tx2);font-weight:500">Shipment date:</label><input type="date" id="bulk-arrival-date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" style="width:140px"><label style="font-size:12px;color:var(--tx2);font-weight:500">Invoice #:</label><input type="text" id="bulk-invoice" placeholder="e.g. INV-2026-0142" style="width:160px"><span style="font-size:12px;color:var(--tx3)">Recorded for all imported items (used for filtering).</span></div>'
+    +'<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 6px;flex-wrap:wrap"><label style="font-size:12px;color:var(--tx2);font-weight:500">Shipment date:</label><input type="date" id="bulk-arrival-date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" style="width:140px"><label style="font-size:12px;color:var(--tx2);font-weight:500">PL #:</label><input type="text" id="bulk-invoice" placeholder="e.g. PL number" style="width:160px"><span style="font-size:12px;color:var(--tx3)">Recorded for all imported items (used for filtering).</span></div>'
     +'<p style="padding:0 18px 6px;font-size:12px;color:var(--tx2)">Paste from Excel (Ctrl+V). Arrow keys, Tab, Enter to navigate. Drag to select.</p>'
     +'<div style="overflow-x:auto;padding:8px 16px"><table id="bulk-table" style="border-collapse:collapse"><thead>'+thead+'</thead><tbody id="bulk-tbody">'+tbody+'</tbody></table></div>'
     +'<div id="bulk-preview" style="padding:0 16px 16px"></div></div>';
@@ -2479,7 +2719,7 @@ function parseBulkPaste(){
   var nN=res.filter(function(r){return r.status==="new";}).length,nU=res.filter(function(r){return r.status==="exact";}).length,nC=res.filter(function(r){return r.status!=="new"&&r.status!=="exact";}).length;
   var pill=function(id,color,label){return '<button class="bulk-filter-pill" data-filter="'+id+'" style="cursor:pointer;border:1px solid '+color+';background:transparent;color:'+color+';border-radius:12px;font-size:12px;padding:3px 12px;margin-right:6px;font-weight:600">'+label+'</button>';};
   var _invVal=((document.getElementById("bulk-invoice")||{}).value||"").trim();
-  var _invWarn=_invVal?'':'<div style="background:var(--abg);border:1px solid var(--amber);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:var(--amber)">\u26A0 No invoice number entered. You can still import \u2014 these items will be filed under \u201cNo invoice\u201d for this shipment date, and you can assign an invoice number to the whole shipment later from the Inventory filter.</div>';
+  var _invWarn=_invVal?'':'<div style="background:var(--abg);border:1px solid var(--amber);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:var(--amber)">\u26A0 No PL number entered. You can still import \u2014 these items will be filed under \u201cNo PL\u201d for this shipment date, and you can assign a PL number to the whole shipment later from the Inventory filter.</div>';
   var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px">'+_invWarn+'<div style="font-size:13px;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px"><b style="margin-right:8px">'+res.length+' rows:</b>'+pill("all","var(--tx2)","All ("+res.length+")")+pill("new","var(--green)",nN+" new")+pill("exact","var(--blue2)",nU+" update")+pill("review","var(--amber)",nC+" review")+'<span style="font-size:11px;color:var(--tx3);margin-left:6px">(click to filter)</span></div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg4)"><th style="padding:5px 8px">Include</th><th>Description</th><th>Part No.</th><th>Qty</th><th>Location</th><th>Status</th></tr></thead><tbody>';
   res.forEach(function(r,i){
@@ -2599,8 +2839,10 @@ function executeBulkImport(){
   importedTx.forEach(function(t){
     S.tx.push({id:String(Date.now()+(Math.random()*99999|0)),itemId:t.itemId,itemName:t.itemName,type:"receive",qty:t.addQty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import"+(arrInv?" (Inv "+arrInv+")":""),reasonCode:"Import",remaining:t.remaining,serial:t.serial||"",invoice:arrInv,ts:Date.now()});
   });
+  var _rrqAdd=importedTx.map(function(t){var it=S.items.find(function(x){return x.id===t.itemId;});return {pn:it?it.pn:"",name:t.itemName,qty:t.addQty,shipDate:arrDate};});
   save();_bulkMatches=[];if(syncStatus()){showSyncBadge("saving");pushToSheets();}
   showImportDone(ad,up,sk);
+  runRRQCheck(_rrqAdd);
 }
 
 document.addEventListener("paste",function(ev){
@@ -2744,7 +2986,8 @@ document.addEventListener("click", function(ev){
   // --- static button IDs in inventory toolbar ---
   if(t.id==="btn-clear"){S.search="";S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.fShipDate="";S.fInvoice="";S.fNoInvoice=false;S._statFilter=null;renderPage();return;}
   if(t.id==="btn-clear-ship"){S.fShipDate="";S.fInvoice="";S.fNoInvoice=false;renderPage();return;}
-  if(t.id==="btn-set-invoice"){setInvoiceForShipment();return;}
+  if(t.id==="btn-edit-shipment"){if(!canEdit())return;S.modal={type:"editship"};showModal(buildEditShipmentModal());return;}
+  if(t.id==="btn-es-save"){if(!canEdit())return;submitEditShipment();return;}
   if(t.id==="btn-rpt-apply"){S._rptFrom=gv("rpt-from");S._rptTo=gv("rpt-to");renderPage();return;}
   if(t.id==="btn-rpt-excel"){exportRptExcel();return;}
   if(t.id==="btn-rpt-word"){exportRptWord();return;}
@@ -2931,6 +3174,13 @@ return;}
     if(a==="draw"){if(!canEdit())return;S.modal={type:"draw",id:id};showModal(buildTxModal(id,"draw"));return;}
     if(a==="receive"){if(!canEdit())return;S.modal={type:"receive",id:id};showModal(buildTxModal(id,"receive"));return;}
     if(a==="delUser"){delUser(id);return;}
+    if(a==="tx-edit"){if(!canAdmin())return;var _te=el.getAttribute("data-txid");S.modal={type:"txedit",id:_te};showModal(buildTxEditModal(_te));return;}
+    if(a==="tx-add"){if(!canAdmin())return;S.modal={type:"txadd"};showModal(buildTxEditModal(null));return;}
+    if(a==="tx-save"){if(!canAdmin())return;submitTxEdit(el.getAttribute("data-txid")||null);return;}
+    if(a==="rrq-confirm"){confirmRRQReceive();return;}
+    if(a==="rrq-skip"){if(S._rrqQueue){S._rrqIdx++;showNextRRQ();}else closeModal();return;}
+    if(a==="mm-code-save"){var _mc=((document.getElementById("mm-code")||{}).value||"").trim();if(!_mc){alert("Enter the code.");return;}S._mmCode=_mc;try{localStorage.setItem("osprey_mm_code",_mc);}catch(e){}doRRQSave(S._rrqPendingN,_mc);return;}
+    if(a==="tx-delete"){if(!canAdmin())return;deleteTxRecord(el.getAttribute("data-txid"));return;}
     return;
   }
 
@@ -3098,9 +3348,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-LOTS-6 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD LOTS-6 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 LOTS-6";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-RRQ-2 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD RRQ-2 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RRQ-2";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
