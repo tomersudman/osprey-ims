@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-RRQ-2</title>
+<title>OSPREY IMS v-RRQ-3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -460,6 +460,17 @@ function pushToSheets() {
     .catch(function(){ S._bulkPending=false; S._syncState="err"; showSyncBadge("err"); });
 }
 
+function toast(msg,kind){
+  try{
+    var col=kind==="err"?"var(--red)":kind==="ok"?"var(--green)":kind==="info"?"var(--amber)":"var(--tx)";
+    var bg=kind==="err"?"var(--rbg)":kind==="ok"?"var(--gbg)":"var(--abg)";
+    var t=document.createElement("div");
+    t.textContent=msg;
+    t.style.cssText="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:99999;max-width:88vw;background:var(--bg2);border:1px solid "+col+";color:"+col+";padding:11px 16px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 6px 24px rgba(0,0,0,.4);text-align:center";
+    document.body.appendChild(t);
+    setTimeout(function(){t.style.transition="opacity .4s";t.style.opacity="0";setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},400);}, kind==="err"?8000:5000);
+  }catch(e){}
+}
 function showSyncBadge(state) {
   var el = document.getElementById("sync-badge");
   if (!el) return;
@@ -1534,8 +1545,10 @@ var MM_URL="https://script.google.com/macros/s/AKfycbwoRhcG8vujzhhGHT4YgjepivKU4
 function mmApi(body){return fetch(MM_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)}).then(function(r){return r.json();});}
 function runRRQCheck(added){
   if(!added||!added.length||!MM_URL)return;
+  toast("Checking requisitions in the Maintenance Manager\u2026","info");
   mmApi({action:"load"}).then(function(resp){
-    if(!resp||!resp.data||!Array.isArray(resp.data.rrqs))return;
+    if(!resp){toast("RRQ check: the Maintenance Manager returned an empty response.","err");return;}
+    if(!resp.data||!Array.isArray(resp.data.rrqs)){toast("RRQ check: reached the Maintenance Manager, but no RRQ list came back (unexpected data shape \u2014 see console).","err");try{console.log("[RRQ] MM load response:",resp);}catch(e){}return;}
     var open=resp.data.rrqs.filter(function(r){var s=String(r.status||"").toUpperCase();return s===""||s==="REQUESTED"||s==="PARTIALLY";});
     var queue=[],seen={};
     added.forEach(function(a){
@@ -1546,10 +1559,11 @@ function runRRQCheck(added){
         if((mPn||mNm)&&!seen[r.id]){seen[r.id]=1;queue.push({rrq:r,added:a,by:(mPn&&mNm)?"P/N & name":(mPn?"P/N":"name")});}
       });
     });
-    if(!queue.length)return;
+    if(!queue.length){toast("RRQ check: reached the Maintenance Manager \u2014 "+resp.data.rrqs.length+" RRQs ("+open.length+" open), but none match what you just added.","info");try{console.log("[RRQ] added:",added,"open RRQs:",open.map(function(r){return (r.pn||"")+" / "+(r.item||"");}));}catch(e){}return;}
     S._rrqQueue=queue;S._rrqIdx=0;
+    toast(queue.length+" matching open requisition"+(queue.length>1?"s":"")+" found.","ok");
     showNextRRQ();
-  }).catch(function(){});
+  }).catch(function(e){toast("RRQ check: couldn't reach the Maintenance Manager ("+((e&&e.message)?e.message:"network / CORS error")+").","err");try{console.log("[RRQ] fetch error:",e);}catch(_){}});
 }
 function showNextRRQ(){
   if(!S._rrqQueue||S._rrqIdx>=S._rrqQueue.length){S._rrqQueue=null;return;}
@@ -3348,9 +3362,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-RRQ-2 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD RRQ-2 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RRQ-2";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-RRQ-3 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD RRQ-3 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RRQ-3";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
