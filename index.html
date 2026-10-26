@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SN</title>
+<title>OSPREY IMS v-QTYFIX</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -667,6 +667,19 @@ function addNonSerialBatch(item,qty,loc,box,exp,note,date,inv){
   if(lot){lot.qty=(parseInt(lot.qty)||0)+qty; if(date)lot.shipDate=date; if(inv)lot.invoice=inv; if(note&&!lot.note)lot.note=note;}
   else{item.lots.push({qty:qty,location:loc||item.location||"",box:box||item.floor||"",expiry:exp||item.expiry||"",note:note||"",shipDate:date||"",invoice:inv||""});}
   item.qty=item.lots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);
+}
+// Apply a net stock change to a non-serial item's batches (keeps item.qty = sum of batches)
+function applyQtyDeltaToLots(item,delta){
+  if(!Array.isArray(item.lots)||!item.lots.length){item.qty=Math.max(0,(parseInt(item.qty)||0)+delta);return;}
+  if(delta>0){
+    item.lots[0].qty=(parseInt(item.lots[0].qty)||0)+delta;
+  } else if(delta<0){
+    var remain=-delta;
+    for(var i=0;i<item.lots.length&&remain>0;i++){var lq=parseInt(item.lots[i].qty)||0;var take=Math.min(lq,remain);item.lots[i].qty=lq-take;remain-=take;}
+    item.lots=item.lots.filter(function(L){return (parseInt(L.qty)||0)>0;});
+  }
+  item.qty=item.lots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);
+  if(item.lots.length<=1){ if(item.lots.length){item.location=item.lots[0].location;item.floor=item.lots[0].box;item.expiry=item.lots[0].expiry;} delete item.lots; }
 }
 function lotSection(item){
   var ls=itemLots(item);
@@ -1808,7 +1821,7 @@ function submitTxEdit(txid){
   var item=S.items.find(function(i){return i.id===itemId;});
   if(isAdd&&!item){alert("Please select an item.");return;}
   var oldEffect=isAdd?0:(S._txEditOldEffect||0);
-  if(item&&adjust){if(isSerialized(item)){item.qty=itemSerials(item).length;}else{item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));}markDirty(item.id);}
+  if(item&&adjust){if(isSerialized(item)){item.qty=itemSerials(item).length;}else if(Array.isArray(item.lots)&&item.lots.length){applyQtyDeltaToLots(item,txEffect(typ,qty)-oldEffect);}else{item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));}markDirty(item.id);}
   if(isAdd){
     S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:typ,qty:qty,date:date,person:person,purpose:note,reasonCode:reason,remaining:(item?item.qty:0),sn:"",invoice:"",ts:Date.now()});
   } else {
@@ -1837,6 +1850,8 @@ function deleteTxRecord(txid){
       }
       item.sn=(item.serials&&item.serials[0])||"";
       item.qty=itemSerials(item).length;
+    } else if(Array.isArray(item.lots)&&item.lots.length){
+      applyQtyDeltaToLots(item,-txEffect(t.type,t.qty));
     } else {
       item.qty=Math.max(0,(parseInt(item.qty)||0)-txEffect(t.type,t.qty));
     }
@@ -3268,9 +3283,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SN (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SN LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SN";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-QTYFIX (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD QTYFIX LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 QTYFIX";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
