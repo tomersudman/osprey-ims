@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-STABLE</title>
+<title>OSPREY IMS v-SN</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1496,6 +1496,8 @@ function detailHTML(item){
         notes=(t.reasonCode?"["+esc(t.reasonCode)+"] ":"")+esc(t.purpose||"---");
         if(t.invoice)notes+=" \u2013 PL "+esc(t.invoice);
       }
+      var _tsn=t.serial||t.sn;
+      if(_tsn&&notes.indexOf(String(_tsn))<0)notes+=" \u00b7 S/N "+esc(_tsn);
       tl+='<div class="tlr"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span></div>';
     });
   }
@@ -1806,7 +1808,7 @@ function submitTxEdit(txid){
   var item=S.items.find(function(i){return i.id===itemId;});
   if(isAdd&&!item){alert("Please select an item.");return;}
   var oldEffect=isAdd?0:(S._txEditOldEffect||0);
-  if(item&&adjust){item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));markDirty(item.id);}
+  if(item&&adjust){if(isSerialized(item)){item.qty=itemSerials(item).length;}else{item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));}markDirty(item.id);}
   if(isAdd){
     S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:typ,qty:qty,date:date,person:person,purpose:note,reasonCode:reason,remaining:(item?item.qty:0),sn:"",invoice:"",ts:Date.now()});
   } else {
@@ -1823,7 +1825,23 @@ function deleteTxRecord(txid){
   if(!confirm("Delete this transaction? This cannot be undone."))return;
   var item=S.items.find(function(i){return i.id===t.itemId;});
   var adjust=item?confirm("Also reverse its effect on current stock?\n\nOK = adjust stock back (recommended)\nCancel = remove the record only, leave stock as-is"):false;
-  if(item&&adjust){item.qty=Math.max(0,(parseInt(item.qty)||0)-txEffect(t.type,t.qty));markDirty(item.id);}
+  if(item&&adjust){
+    var _ts=String(t.serial||t.sn||"").trim();
+    if(isSerialized(item)&&_ts){
+      if(t.type==="receive"){
+        if(Array.isArray(item.serials))item.serials=item.serials.filter(function(s){return String(s).trim()!==_ts;});
+        ["serialLocations","serialBoxes","serialExpiry","serialNotes","serialShipDate","serialInvoice"].forEach(function(k){if(item[k]){delete item[k][_ts];delete item[k][t.serial];delete item[k][t.sn];}});
+      } else {
+        if(!Array.isArray(item.serials))item.serials=item.sn?[item.sn]:[];
+        if(item.serials.map(function(s){return String(s).trim();}).indexOf(_ts)<0)item.serials.push(_ts);
+      }
+      item.sn=(item.serials&&item.serials[0])||"";
+      item.qty=itemSerials(item).length;
+    } else {
+      item.qty=Math.max(0,(parseInt(item.qty)||0)-txEffect(t.type,t.qty));
+    }
+    markDirty(item.id);
+  }
   S.tx=S.tx.filter(function(x){return x.id!==txid;});
   save();
   if(syncStatus()){showSyncBadge("saving");pushToSheets();}
@@ -1850,7 +1868,7 @@ function renderLog(){
       +'<td style="white-space:nowrap;font-size:12px;color:var(--tx2)">'+fd(t.date)+'</td>'
       +'<td><span class="txd '+(t.type==="draw"?"txdd":"txdr")+'">'+(t.type==="draw"?"DRAW":"RECEIVE")+'</span></td>'
       +'<td style="font-size:11px;color:var(--tx2)">'+esc(t.reasonCode||'---')+'</td>'
-      +'<td><div>'+esc(item?item.name:t.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:'')+'</div></td>'
+      +'<td><div>'+esc(item?item.name:t.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:'')+((t.serial||t.sn)?' <span style="color:var(--tx2)">\u00b7 S/N '+esc(t.serial||t.sn)+'</span>':'')+'</div></td>'
       +'<td style="font-weight:600;color:'+(t.type==="draw"?"var(--red)":"var(--green)")+'">'+(t.type==="draw"?"-":"+")+t.qty+'</td>'
       +'<td style="color:var(--tx2)">'+t.remaining+'</td>'
       +'<td style="font-weight:500">'+esc(t.person)+'</td>'
@@ -1982,34 +2000,29 @@ function locOptions(selected){
 function serialLocEditTable(item){
   var sers=itemSerials(item);
   if(sers.length<1)return "";
+  var inp='height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;font-size:12px';
   var rows=sers.map(function(sn){
     var cur=(item.serialLocations&&item.serialLocations[sn])?item.serialLocations[sn]:"";
     var curBox=(item.serialBoxes&&item.serialBoxes[sn])?item.serialBoxes[sn]:"";
     var curExp=(item.serialExpiry&&item.serialExpiry[sn])?item.serialExpiry[sn]:"";
     var curNote=(item.serialNotes&&item.serialNotes[sn])?item.serialNotes[sn]:"";
     return '<tr>'+
-      '<td style="padding:6px 6px;font-family:monospace;font-size:12px;color:var(--tx);white-space:nowrap">'+esc(sn)+'</td>'+
-      '<td style="padding:4px 5px">'+
-        '<select class="edit-sn-loc" data-sn="'+esc(sn)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:12px">'+locOptions(cur)+'</select>'+
-      '</td>'+
-      '<td style="padding:4px 5px">'+
-        '<input type="text" class="edit-sn-box" data-sn="'+esc(sn)+'" value="'+esc(curBox)+'" placeholder="'+esc(item.floor||"box")+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px">'+
-      '</td>'+
-      '<td style="padding:4px 5px">'+
-        '<input type="date" class="edit-sn-exp" data-sn="'+esc(sn)+'" value="'+esc(curExp)+'" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 5px;font-size:11px">'+
-      '</td>'+
-      '<td style="padding:4px 5px">'+
-        '<input type="text" class="edit-sn-note" data-sn="'+esc(sn)+'" value="'+esc(curNote)+'" placeholder="comment" style="width:100%;height:30px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:0 6px;font-size:12px">'+
-      '</td></tr>';
+      '<td style="padding:4px 5px"><input type="text" class="edit-sn-num" data-orig="'+esc(sn)+'" value="'+esc(sn)+'" style="width:100%;font-family:monospace;'+inp+';padding:0 5px"></td>'+
+      '<td style="padding:4px 5px"><select class="edit-sn-loc" data-sn="'+esc(sn)+'" style="width:100%;'+inp+';padding:0 5px">'+locOptions(cur)+'</select></td>'+
+      '<td style="padding:4px 5px"><input type="text" class="edit-sn-box" data-sn="'+esc(sn)+'" value="'+esc(curBox)+'" placeholder="'+esc(item.floor||"box")+'" style="width:100%;'+inp+';padding:0 6px"></td>'+
+      '<td style="padding:4px 5px"><input type="date" class="edit-sn-exp" data-sn="'+esc(sn)+'" value="'+esc(curExp)+'" style="width:100%;'+inp+';padding:0 5px;font-size:11px"></td>'+
+      '<td style="padding:4px 5px"><input type="text" class="edit-sn-note" data-sn="'+esc(sn)+'" value="'+esc(curNote)+'" placeholder="comment" style="width:100%;'+inp+';padding:0 6px"></td>'+
+      '<td style="padding:4px 3px;text-align:center"><button type="button" title="Remove this serial" onclick="if(confirm(\'Remove this serial from the item? It is applied when you click Save changes.\'))this.closest(\'tr\').remove()" style="width:26px;height:28px;background:var(--rbg);border:1px solid var(--red);color:var(--red);border-radius:5px;cursor:pointer;font-size:13px;line-height:1">\u2715</button></td>'+
+      '</tr>';
   }).join("");
   var th='padding:6px 6px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600';
-  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers \u2014 location, box, expiry &amp; comment ('+sers.length+')</label>'+
-    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Set location, box, expiry and comment per serial. Leave blank to use the item defaults above.</div>'+
+  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers \u2014 edit S/N, location, box, expiry &amp; comment ('+sers.length+')</label>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Edit any serial number, set its location / box / expiry / comment, or press \u2715 to remove that serial. Total stock = number of serials.</div>'+
     '<div style="border:1px solid var(--bd);border-radius:8px;max-height:260px;overflow-y:auto;overflow-x:auto">'+
     '<table style="width:100%;border-collapse:collapse;table-layout:fixed">'+
-    '<colgroup><col style="width:16%"><col style="width:26%"><col style="width:15%"><col style="width:20%"><col style="width:23%"></colgroup>'+
+    '<colgroup><col style="width:17%"><col style="width:24%"><col style="width:13%"><col style="width:18%"><col style="width:21%"><col style="width:7%"></colgroup>'+
     '<thead><tr style="background:var(--bg3)">'+
-    '<th style="'+th+'">Serial</th><th style="'+th+'">Location</th><th style="'+th+'">Box</th><th style="'+th+'">Expiry</th><th style="'+th+'">Comment</th>'+
+    '<th style="'+th+'">Serial</th><th style="'+th+'">Location</th><th style="'+th+'">Box</th><th style="'+th+'">Expiry</th><th style="'+th+'">Comment</th><th style="'+th+'"></th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 function buildItemModal(id){
@@ -2118,7 +2131,7 @@ function submitTx(){
       delete item.lots;
     }
   }
-  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",ts:Date.now()};
+  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",serial:snPicked||"",ts:Date.now()};
   markDirty(item.id);
   S.tx.push(newTx);
   saveAndPushTx(newTx);
@@ -2169,33 +2182,30 @@ function submitItem(id){
     if(document.getElementById("m-expiry"))item.expiry=gv("m-expiry");
     if(document.getElementById("m-notes"))item.notes=gv("m-notes");
     var nq=parseInt(gv("m-qty")); if(document.getElementById("m-qty")&&!isNaN(nq)&&nq>=0)item.qty=nq;
-    // Save per-serial locations from the edit dropdowns
-    var snLocSelects=document.querySelectorAll(".edit-sn-loc");
-    if(snLocSelects.length){
-      snLocSelects.forEach(function(sel){setSerialLoc(item,sel.getAttribute("data-sn"),sel.value);});
-    }
-    var snBoxInputs=document.querySelectorAll(".edit-sn-box");
-    if(snBoxInputs.length){
-      snBoxInputs.forEach(function(inp){setSerialBox(item,inp.getAttribute("data-sn"),inp.value);});
-    }
-    var snExpInputs=document.querySelectorAll(".edit-sn-exp");
-    if(snExpInputs.length){
-      snExpInputs.forEach(function(inp){setSerialExpiry(item,inp.getAttribute("data-sn"),inp.value);});
-    }
-    var snNoteInputs=document.querySelectorAll(".edit-sn-note");
-    if(snNoteInputs.length){
-      snNoteInputs.forEach(function(inp){setSerialNote(item,inp.getAttribute("data-sn"),inp.value);});
-    }
-    if(hasSerTable)item.qty=itemSerials(item).length;
-    // Keep the item's shown location/box/expiry in sync with its serials
-    // (a non-split serialized item shows item.location in Placement / the inventory row)
-    if(hasSerTable&&isSerialized(item)){
-      var _sers=itemSerials(item);
-      if(_sers.length){
-        var _l0=serialLoc(item,_sers[0]); if(_l0&&_l0!=="Unknown")item.location=_l0;
-        var _b0=serialBox(item,_sers[0]); if(_b0)item.floor=_b0;
-        var _e0=serialExpiry(item,_sers[0]); if(_e0)item.expiry=_e0;
-      }
+    // Rebuild serials + per-serial data from the edit table (handles rename & delete)
+    var snNumEls=document.querySelectorAll(".edit-sn-num");
+    if(snNumEls.length){
+      var oldShip=item.serialShipDate||{}, oldInv=item.serialInvoice||{};
+      var nS=[], nLoc={}, nBox={}, nExp={}, nNote={}, nShip={}, nInv={};
+      snNumEls.forEach(function(numEl){
+        var orig=numEl.getAttribute("data-orig"); var origK=String(orig).trim();
+        var sn=(numEl.value||"").trim(); if(!sn)return;
+        var row=numEl.closest("tr");
+        var g=function(cls){var e=row.querySelector("."+cls);return e?(e.value||"").trim():"";};
+        nS.push(sn);
+        var loc=g("edit-sn-loc"); if(loc&&loc!=="Unknown")nLoc[sn]=loc;
+        var box=g("edit-sn-box"); if(box)nBox[sn]=box;
+        var exp=g("edit-sn-exp"); if(exp)nExp[sn]=exp;
+        var note=g("edit-sn-note"); if(note)nNote[sn]=note;
+        var sd=(oldShip[orig]!=null?oldShip[orig]:oldShip[origK]); if(sd!=null&&String(sd).trim())nShip[sn]=sd;
+        var iv=(oldInv[orig]!=null?oldInv[orig]:oldInv[origK]); if(iv!=null&&String(iv).trim())nInv[sn]=iv;
+      });
+      item.serials=nS;
+      item.serialLocations=nLoc; item.serialBoxes=nBox; item.serialExpiry=nExp; item.serialNotes=nNote;
+      item.serialShipDate=nShip; item.serialInvoice=nInv;
+      item.sn=nS[0]||"";
+      item.qty=nS.length;
+      if(nS.length){ if(nLoc[nS[0]])item.location=nLoc[nS[0]]; if(nBox[nS[0]])item.floor=nBox[nS[0]]; if(nExp[nS[0]])item.expiry=nExp[nS[0]]; }
     }
     var lotRows=document.querySelectorAll(".edit-lot-loc");
     if(lotRows.length){
@@ -3258,9 +3268,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-STABLE (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD STABLE LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 STABLE";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SN (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SN LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SN";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
