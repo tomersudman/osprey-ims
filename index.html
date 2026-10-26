@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-QTYFIX</title>
+<title>OSPREY IMS v-RETURN</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -139,6 +139,7 @@ tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
 .txd{padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;text-transform:uppercase}
 .txdd{background:var(--rbg);color:var(--red);border:1px solid var(--rbd)}
 .txdr{background:var(--gbg);color:var(--green);border:1px solid var(--gbd)}
+.txdb{background:rgba(59,130,246,.12);color:var(--blue2);border:1px solid rgba(59,130,246,.45)}
 .eok{color:var(--green);font-size:12px}.esoon{color:var(--amber);font-size:12px;font-weight:500}.egone{color:var(--red);font-size:12px;font-weight:500}
 #login-screen{display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center;padding:20px;overflow-y:auto}
 .login-card{width:90%;max-width:360px;background:var(--bg2);border:1px solid var(--bd2);border-radius:12px;padding:30px 34px;text-align:center}
@@ -174,6 +175,7 @@ tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
 .tlh{display:grid;grid-template-columns:95px 55px 1fr 60px 70px 1fr;gap:8px;padding:6px 12px;font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;background:var(--bg3);border-bottom:1px solid var(--bd)}
 .tlr{display:grid;grid-template-columns:95px 55px 1fr 60px 70px 1fr;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd);font-size:12px;align-items:center}
 .tlr:last-child{border-bottom:none}
+.tlh.tla,.tlr.tla{grid-template-columns:95px 55px 1fr 60px 70px 1fr 52px}
 .tlr:hover{background:rgba(255,255,255,.03)}
 .empty{padding:32px;text-align:center;color:var(--tx3);font-size:13px}
 .hide-sm{display:table-cell}
@@ -1495,12 +1497,9 @@ function detailHTML(item){
   var tl="";
   if(!txs.length){tl='<div style="color:var(--tx3);font-size:13px;padding:10px 0">No transactions yet for this item.</div>';}
   else{
-    tl='<div class="tlh"><span>Date</span><span>Type</span><span>Person</span><span>Qty</span><span>Rem.</span><span>Reason / Notes</span></div>';
+    var _adm=canAdmin();tl='<div class="tlh'+(_adm?' tla':'')+'"><span>Date</span><span>Type</span><span>Person</span><span>Qty</span><span>Rem.</span><span>Reason / Notes</span>'+(_adm?'<span></span>':'')+'</div>';
     txs.forEach(function(t){
-      var sign=t.type==="draw"?"-":"+";
-      var col=t.type==="draw"?"var(--red)":"var(--green)";
-      var tag=t.type==="draw"?"txdd":"txdr";
-      var lbl=t.type==="draw"?"DRAW":"RECV";
+      var _st=txStyle(t);var sign=_st.sign,col=_st.col,tag=_st.tag,lbl=_st.lbl;
       var notes;
       if(t.reasonCode==="Import"||t.reasonCode==="Restock"||t.reasonCode==="Add"){
         var _base=t.reasonCode==="Import"?"Shipment import":(t.reasonCode==="Restock"?"Restock":"New item");
@@ -1511,7 +1510,7 @@ function detailHTML(item){
       }
       var _tsn=t.serial||t.sn;
       if(_tsn&&notes.indexOf(String(_tsn))<0)notes+=" \u00b7 S/N "+esc(_tsn);
-      tl+='<div class="tlr"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span></div>';
+      tl+='<div class="tlr'+(_adm?' tla':'')+'"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span>'+(_adm?'<span><button class="btn sm" data-action="tx-edit" data-txid="'+esc(t.id)+'" style="padding:0 8px">Edit</button></span>':'')+'</div>';
     });
   }
   return'<div class="mh" data-wide="1">'+
@@ -1539,7 +1538,7 @@ function detailHTML(item){
     '<div class="ds"><div class="dst">Transaction history ('+txs.length+')</div>'+tl+'</div>'+
     '</div>'+
     '<div class="mf">'+
-    (canEdit()?'<button class="btn br" id="btn-draw-item" data-id="'+esc(item.id)+'">Draw</button><button class="btn bg" id="btn-recv-item" data-id="'+esc(item.id)+'">Receive</button>':'')+
+    (canEdit()?'<button class="btn br" id="btn-draw-item" data-id="'+esc(item.id)+'">Draw</button>':'')+
     '<button class="btn" id="modal-close-btn2">Close</button></div>';
 }
 
@@ -1644,7 +1643,7 @@ function renderInventory(){
       +'<td class="hide-sm">'+boxc+'</td>'
       +'<td class="hide-sm">'+ecell(item)+'</td>'
       +'<td class="hide-sm" style="font-size:11px;color:var(--tx2);max-width:180px">'+(item.notes?esc(item.notes):'<span style=\'color:var(--tx3)\'>---</span>')+'</td>'
-      +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button><button class="btn sm bg" data-action="receive" data-id="'+esc(item.id)+'" style="padding:0 10px">Recv</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
+      +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
     // Mobile card
     var stkColor=item.qty===0?'var(--red)':item.qty<=2?'var(--amber)':'var(--green)';
     cards+='<div class="mrow" data-action="detail" data-id="'+esc(item.id)+'">'
@@ -1720,7 +1719,7 @@ function renderInventory(){
         +'<td class="hide-sm">'+boxc+'</td>'
         +'<td class="hide-sm">'+expc+'</td>'
         +'<td class="hide-sm" style="font-size:11px;color:var(--tx2);max-width:180px">'+(meta.note?esc(meta.note):'<span style=\'color:var(--tx3)\'>---</span>')+'</td>'
-        +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button><button class="btn sm bg" data-action="receive" data-id="'+esc(item.id)+'" style="padding:0 10px">Recv</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
+        +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
       var stkColor=meta.qty===0?'var(--red)':meta.qty<=2?'var(--amber)':'var(--green)';
       cards+='<div class="mrow" data-action="detail" data-id="'+esc(item.id)+'"><div class="mrow-main"><div class="mrow-name">'+nm+'</div><div class="mrow-sub">'+hl(item.pn)+(meta.sncell!=="---"?'<span class="mrow-dot">\u00b7</span>S/N '+meta.sncell:'')+(meta.loc?'<span class="mrow-dot">\u00b7</span>'+esc(meta.loc):'')+(meta.inv?'<span class="mrow-dot">\u00b7</span>Inv '+esc(meta.inv):'')+'</div></div><div class="mrow-stk" style="color:'+stkColor+'">'+meta.qty+'</div></div>';
     });
@@ -1740,7 +1739,7 @@ function renderInventory(){
     '<button class="btn bg sm" id="btn-xcsv">Excel</button>'+
     '<button class="btn sm" id="btn-bulk-labels">Download Labels</button>'+
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
-    (canEdit()?'<button class="btn bp" id="btn-add">+ Add</button>':'')+
+    
     '</div></div>'+
     (S._statFilter?'<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;justify-content:space-between"><span>Filtered: '+{low:"Low &amp; critical stock",zero:"Out of stock",exp:"Expiring / expired"}[S._statFilter]+' ('+items.length+' items)</span><button class="btn sm" id="btn-clearstatf" style="border-color:var(--amber);color:var(--amber)">Clear filter</button></div>':'')+
     '<div class="mcards-wrap">'+cards+'</div>'+
@@ -1759,7 +1758,39 @@ function renderInventory(){
 }
 
 // ── LOG PAGE ──────────────────────────────────────────────────────────────────
-function txEffect(type,qty){return type==="receive"?(parseInt(qty)||0):-(parseInt(qty)||0);}
+function txEffect(type,qty){var q=parseInt(qty)||0;return type==="receive"?q:(type==="draw"?-q:0);}
+function txStyle(t){
+  if(t.type==="draw")return{tag:"txdd",lbl:"DRAW",lbl2:"DRAW",sign:"-",col:"var(--red)"};
+  if(t.type==="return")return{tag:"txdb",lbl:"RETURNED",lbl2:"RETURNED",sign:"\u21a9 ",col:"var(--blue2)"};
+  return{tag:"txdr",lbl:"RECV",lbl2:"RECEIVE",sign:"+",col:"var(--green)"};
+}
+function returnToStock(txid){
+  var t=S.tx.find(function(x){return x.id===txid;});
+  if(!t||t.type!=="draw")return;
+  var item=S.items.find(function(i){return i.id===t.itemId;});
+  if(!item){alert("This item no longer exists in the inventory.");return;}
+  var sn=String(t.serial||t.sn||"").trim(), sp=t.snap||{};
+  if(typeof sp==="string"){try{sp=JSON.parse(sp);}catch(e){sp={};}}
+  if(!confirm("Return "+(sn?"S/N "+sn:(parseInt(t.qty)||0)+" unit(s)")+" of "+item.name+" to stock?"+(sp.loc?"\nIt goes back to "+sp.loc+(sp.box?" / box "+sp.box:"")+".":"")))return;
+  if(sn){
+    var cur=itemSerials(item);
+    if(cur.map(function(s){return String(s).trim();}).indexOf(sn)<0)cur.push(sn);
+    item.serials=cur;
+    if(sp.loc&&sp.loc!=="Unknown")setSerialLoc(item,sn,sp.loc);
+    if(sp.box)setSerialBox(item,sn,sp.box);
+    if(sp.exp)setSerialExpiry(item,sn,sp.exp);
+    if(sp.note)setSerialNote(item,sn,sp.note);
+    if(sp.shipDate||sp.invoice)stampShipMeta(item,sn,sp.shipDate||"",sp.invoice||"");
+    item.sn=item.serials[0]||sn;
+    item.qty=itemSerials(item).length;
+  } else {
+    addNonSerialBatch(item,parseInt(t.qty)||0,sp.loc||item.location,sp.box||item.floor,sp.exp||item.expiry,sp.note||"",sp.shipDate||"",sp.invoice||"");
+  }
+  t.type="return"; t.returnedOn=tod(); t.remaining=item.qty;
+  markDirty(item.id); save();
+  if(syncStatus()){showSyncBadge("saving");pushToSheets();}
+  closeModal();renderAll();
+}
 function buildTxEditModal(txid){
   var isAdd=!txid;
   var t=isAdd?{type:"draw",qty:1,date:tod(),person:(S._fullName||(S.currentUser?S.currentUser.name:"")),reasonCode:"",purpose:"",itemId:""}:S.tx.find(function(x){return x.id===txid;});
@@ -1779,7 +1810,7 @@ function buildTxEditModal(txid){
   return '<div class="mh" data-wide="1"><div class="mt">'+(isAdd?"Add transaction":"Edit transaction")+' <span style="font-size:11px;color:var(--tx3);font-weight:400">(admin)</span></div><button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb"><div class="fg">'+
     itemField+
-    '<div><label class="fl">Type *</label><select id="tx-type" style="width:100%" onchange="txPreview()"><option value="draw"'+(t.type==="draw"?' selected':'')+'>Draw (\u2212)</option><option value="receive"'+(t.type==="receive"?' selected':'')+'>Receive (+)</option></select></div>'+
+    '<div><label class="fl">Type *</label><select id="tx-type" style="width:100%" onchange="txPreview()"><option value="draw"'+(t.type==="draw"?' selected':'')+'>Draw (\u2212)</option><option value="receive"'+(t.type==="receive"?' selected':'')+'>Receive (+)</option>'+(t.type==="return"?'<option value="return" selected>Returned</option>':'')+'</select></div>'+
     '<div><label class="fl">Quantity *</label><input id="tx-qty" type="number" min="1" value="'+(parseInt(t.qty)||1)+'" oninput="txPreview()" style="width:100%"></div>'+
     '<div><label class="fl">Date *</label><input id="tx-date" type="date" value="'+esc(t.date||tod())+'" style="width:100%"></div>'+
     '<div><label class="fl">Person *</label><input id="tx-person" type="text" value="'+esc(t.person||"")+'" style="width:100%"></div>'+
@@ -1790,6 +1821,7 @@ function buildTxEditModal(txid){
     '</div></div>'+
     '<div class="mf">'+
     (isAdd?'':'<button class="btn br" data-action="tx-delete" data-txid="'+esc(t.id)+'" style="margin-right:auto">Delete transaction</button>')+
+    ((!isAdd&&t.type==="draw")?'<button class="btn" data-action="tx-return" data-txid="'+esc(t.id)+'" style="border-color:var(--blue2);color:var(--blue2)">\u21a9 Return to stock</button>':'')+
     '<button class="btn" id="modal-close-btn2">Cancel</button>'+
     '<button class="btn bp" data-action="tx-save" data-txid="'+esc(isAdd?"":t.id)+'">'+(isAdd?"Add transaction":"Save changes")+'</button></div>';
 }
@@ -1840,7 +1872,8 @@ function deleteTxRecord(txid){
   var adjust=item?confirm("Also reverse its effect on current stock?\n\nOK = adjust stock back (recommended)\nCancel = remove the record only, leave stock as-is"):false;
   if(item&&adjust){
     var _ts=String(t.serial||t.sn||"").trim();
-    if(isSerialized(item)&&_ts){
+    if(t.type==="return"){ /* drawn then returned: net effect 0 */ }
+    else if(isSerialized(item)&&_ts){
       if(t.type==="receive"){
         if(Array.isArray(item.serials))item.serials=item.serials.filter(function(s){return String(s).trim()!==_ts;});
         ["serialLocations","serialBoxes","serialExpiry","serialNotes","serialShipDate","serialInvoice"].forEach(function(k){if(item[k]){delete item[k][_ts];delete item[k][t.serial];delete item[k][t.sn];}});
@@ -1881,10 +1914,10 @@ function renderLog(){
     var item=S.items.find(function(i){return i.id===t.itemId;});
     rows+='<tr>'
       +'<td style="white-space:nowrap;font-size:12px;color:var(--tx2)">'+fd(t.date)+'</td>'
-      +'<td><span class="txd '+(t.type==="draw"?"txdd":"txdr")+'">'+(t.type==="draw"?"DRAW":"RECEIVE")+'</span></td>'
+      +'<td><span class="txd '+txStyle(t).tag+'">'+txStyle(t).lbl2+'</span></td>'
       +'<td style="font-size:11px;color:var(--tx2)">'+esc(t.reasonCode||'---')+'</td>'
       +'<td><div>'+esc(item?item.name:t.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:'')+((t.serial||t.sn)?' <span style="color:var(--tx2)">\u00b7 S/N '+esc(t.serial||t.sn)+'</span>':'')+'</div></td>'
-      +'<td style="font-weight:600;color:'+(t.type==="draw"?"var(--red)":"var(--green)")+'">'+(t.type==="draw"?"-":"+")+t.qty+'</td>'
+      +'<td style="font-weight:600;color:'+txStyle(t).col+'">'+txStyle(t).sign+t.qty+'</td>'
       +'<td style="color:var(--tx2)">'+t.remaining+'</td>'
       +'<td style="font-weight:500">'+esc(t.person)+'</td>'
       +'<td style="color:var(--tx2);font-size:12px">'+esc(t.purpose||'---')+'</td>'
@@ -1902,7 +1935,7 @@ function renderLog(){
     +'<select id="log-type-filter" style="width:100px">'
     +'<option value=""'+(S._logType===''?' selected':'')+'>All types</option>'
     +'<option value="draw"'+(S._logType==="draw"?' selected':'')+'>Draw only</option>'
-    +'<option value="receive"'+(S._logType==="receive"?' selected':'')+'>Receive only</option>'
+    +'<option value="receive"'+(S._logType==="receive"?' selected':'')+'>Receive only</option>'+'<option value="return"'+(S._logType==="return"?' selected':'')+'>Returned only</option>'
     +'</select>'
     +'<input id="log-person-filter" type="text" placeholder="Person..." value="'+_lp+'" style="width:110px">'
     +(adm?'<button class="btn bp sm" data-action="tx-add">+ Add transaction</button>':'')
@@ -1945,9 +1978,9 @@ function renderAudit(){
   txs.forEach(function(t){
     var item=S.items.find(function(i){return i.id===t.itemId;});
     rows+='<div class="ar"><span style="color:var(--tx2)">'+fd(t.date)+'</span>'+
-      '<span><span class="txd '+(t.type==="draw"?"txdd":"txdr")+'">'+(t.type==="draw"?"DRAW":"RECV")+'</span></span>'+
+      '<span><span class="txd '+txStyle(t).tag+'">'+txStyle(t).lbl+'</span></span>'+
       '<span><div style="font-weight:500">'+esc(item?item.name:t.itemName)+'</div><div style="font-size:11px;color:var(--tx3)">'+esc(item?item.pn:'')+'</div></span>'+
-      '<span style="font-weight:600;color:'+(t.type==="draw"?"var(--red)":"var(--green)")+'">'+(t.type==="draw"?"-":"+")+t.qty+' <span style="color:var(--tx3);font-weight:400;font-size:11px">(rem:'+t.remaining+')</span></span>'+
+      '<span style="font-weight:600;color:'+txStyle(t).col+'">'+txStyle(t).sign+t.qty+' <span style="color:var(--tx3);font-weight:400;font-size:11px">(rem:'+t.remaining+')</span></span>'+
       '<span style="font-weight:500">'+esc(t.person)+'</span>'+
       '<span style="color:var(--tx2);font-size:12px">'+(t.reasonCode?'<span style="background:var(--bg3);border:1px solid var(--bd);border-radius:4px;padding:1px 5px;font-size:10px;margin-right:4px">'+esc(t.reasonCode)+'</span>':'')+esc(t.purpose||'---')+'</span></div>';
   });
@@ -2027,17 +2060,16 @@ function serialLocEditTable(item){
       '<td style="padding:4px 5px"><input type="text" class="edit-sn-box" data-sn="'+esc(sn)+'" value="'+esc(curBox)+'" placeholder="'+esc(item.floor||"box")+'" style="width:100%;'+inp+';padding:0 6px"></td>'+
       '<td style="padding:4px 5px"><input type="date" class="edit-sn-exp" data-sn="'+esc(sn)+'" value="'+esc(curExp)+'" style="width:100%;'+inp+';padding:0 5px;font-size:11px"></td>'+
       '<td style="padding:4px 5px"><input type="text" class="edit-sn-note" data-sn="'+esc(sn)+'" value="'+esc(curNote)+'" placeholder="comment" style="width:100%;'+inp+';padding:0 6px"></td>'+
-      '<td style="padding:4px 3px;text-align:center"><button type="button" title="Remove this serial" onclick="if(confirm(\'Remove this serial from the item? It is applied when you click Save changes.\'))this.closest(\'tr\').remove()" style="width:26px;height:28px;background:var(--rbg);border:1px solid var(--red);color:var(--red);border-radius:5px;cursor:pointer;font-size:13px;line-height:1">\u2715</button></td>'+
       '</tr>';
   }).join("");
   var th='padding:6px 6px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;font-weight:600';
-  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers \u2014 edit S/N, location, box, expiry &amp; comment ('+sers.length+')</label>'+
-    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Edit any serial number, set its location / box / expiry / comment, or press \u2715 to remove that serial. Total stock = number of serials.</div>'+
+  return '<div class="ff" style="margin-top:4px"><label class="fl">Serial numbers \u2014 S/N, location, box, expiry &amp; comment ('+sers.length+')</label>'+
+    '<div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Edit a serial number or set its location / box / expiry / comment. To remove a serial, delete its transaction.</div>'+
     '<div style="border:1px solid var(--bd);border-radius:8px;max-height:260px;overflow-y:auto;overflow-x:auto">'+
     '<table style="width:100%;border-collapse:collapse;table-layout:fixed">'+
-    '<colgroup><col style="width:17%"><col style="width:24%"><col style="width:13%"><col style="width:18%"><col style="width:21%"><col style="width:7%"></colgroup>'+
+    '<colgroup><col style="width:18%"><col style="width:26%"><col style="width:14%"><col style="width:19%"><col style="width:23%"></colgroup>'+
     '<thead><tr style="background:var(--bg3)">'+
-    '<th style="'+th+'">Serial</th><th style="'+th+'">Location</th><th style="'+th+'">Box</th><th style="'+th+'">Expiry</th><th style="'+th+'">Comment</th><th style="'+th+'"></th>'+
+    '<th style="'+th+'">Serial</th><th style="'+th+'">Location</th><th style="'+th+'">Box</th><th style="'+th+'">Expiry</th><th style="'+th+'">Comment</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 function buildItemModal(id){
@@ -2104,7 +2136,7 @@ function submitTx(){
   var isSer=isSerialized(item);
   var lotIdx=-1, drawLocLabel="";
   if(!isSer&&isOut){var lotEl=document.getElementById("m-lot");if(lotEl&&lotEl.value!==""){lotIdx=parseInt(lotEl.value);var LL=(item.lots||[])[lotIdx];if(LL){if(qty>(parseInt(LL.qty)||0)){alert("Only "+(parseInt(LL.qty)||0)+" unit(s) in that location ("+(LL.location||"?")+").");return;}drawLocLabel=LL.location||"";}}}
-  var snPicked="";
+  var snPicked="", snap=null;
   if(isSer){
     var snEl=document.getElementById("m-sn");
     snPicked=snEl?snEl.value.trim():"";
@@ -2112,6 +2144,7 @@ function submitTx(){
     if(!isOut&&!snPicked){alert("Please enter the serial number received.");return;}
     if(!Array.isArray(item.serials))item.serials=item.sn?[item.sn]:[];
     if(isOut){
+      snap={loc:serialLoc(item,snPicked),box:serialBox(item,snPicked),exp:serialExpiry(item,snPicked),note:serialNote(item,snPicked),shipDate:rawSerialShip(item,snPicked),invoice:rawSerialInv(item,snPicked)};
       item.serials=item.serials.filter(function(s){return s!==snPicked;});
       item.sn=item.serials[0]||"";
       if(item.serialLocations&&item.serialLocations[snPicked])delete item.serialLocations[snPicked];
@@ -2127,6 +2160,11 @@ function submitTx(){
       var rl=document.getElementById("m-sn-loc");
       if(rl&&rl.value.trim())setSerialLoc(item,snPicked,rl.value.trim());
     }
+  }
+  if(isOut&&!isSer){
+    var _LL=(lotIdx>=0&&item.lots)?item.lots[lotIdx]:null;
+    snap=_LL?{loc:_LL.location||"",box:_LL.box||"",exp:_LL.expiry||"",note:_LL.note||"",shipDate:_LL.shipDate||"",invoice:_LL.invoice||""}
+            :{loc:item.location||"",box:item.floor||"",exp:item.expiry||"",note:"",shipDate:item.shipDate||"",invoice:item.invoice||""};
   }
   item.qty=isOut?item.qty-qty:item.qty+qty;
   if(!isSer&&Array.isArray(item.lots)&&item.lots.length){
@@ -2146,7 +2184,7 @@ function submitTx(){
       delete item.lots;
     }
   }
-  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",serial:snPicked||"",ts:Date.now()};
+  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",serial:snPicked||"",snap:snap,ts:Date.now()};
   markDirty(item.id);
   S.tx.push(newTx);
   saveAndPushTx(newTx);
@@ -2204,7 +2242,7 @@ function submitItem(id){
       var nS=[], nLoc={}, nBox={}, nExp={}, nNote={}, nShip={}, nInv={};
       snNumEls.forEach(function(numEl){
         var orig=numEl.getAttribute("data-orig"); var origK=String(orig).trim();
-        var sn=(numEl.value||"").trim(); if(!sn)return;
+        var sn=(numEl.value||"").trim(); if(!sn)sn=origK; if(!sn)return;
         var row=numEl.closest("tr");
         var g=function(cls){var e=row.querySelector("."+cls);return e?(e.value||"").trim():"";};
         nS.push(sn);
@@ -2417,7 +2455,7 @@ function exportRptWord(){
   var bi={};draws.forEach(function(t){var item=S.items.find(function(i){return i.id===t.itemId;})||{name:t.itemName,pn:""};var k=item.pn||item.name;if(!bi[k])bi[k]={name:item.name,pn:item.pn||"",qty:0};bi[k].qty+=t.qty;});
   var top=Object.values(bi).sort(function(a,b){return b.qty-a.qty;});
   var sumRows=top.map(function(x,i){return"<tr style='background:"+(i%2===0?"#f9f9f9":"#fff")+"'><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(x.pn)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(x.name)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;text-align:center;font-weight:bold'>"+x.qty+"</td></tr>";}).join("");
-  var txRows=txs.slice().sort(function(a,b){return a.date.localeCompare(b.date);}).map(function(t,i){var item=S.items.find(function(i2){return i2.id===t.itemId;})||{name:t.itemName,pn:""};var bg=t.type==="draw"?"#fff5f5":"#f0fff4";return"<tr style='background:"+bg+"'><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+fdate(t.date)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;font-weight:bold;color:"+(t.type==="draw"?"#c0392b":"#27ae60")+"'>"+t.type.toUpperCase()+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(item.pn||"")+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(item.name||t.itemName)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;text-align:center;font-weight:bold'>"+(t.type==="draw"?"-":"+")+t.qty+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(t.person)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(t.reasonCode||"")+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;color:#666'>"+esc(t.purpose||"")+"</td></tr>";}).join("");
+  var txRows=txs.slice().sort(function(a,b){return a.date.localeCompare(b.date);}).map(function(t,i){var item=S.items.find(function(i2){return i2.id===t.itemId;})||{name:t.itemName,pn:""};var bg=t.type==="draw"?"#fff5f5":"#f0fff4";return"<tr style='background:"+bg+"'><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+fdate(t.date)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;font-weight:bold;color:"+(t.type==="draw"?"#c0392b":"#27ae60")+"'>"+t.type.toUpperCase()+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(item.pn||"")+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(item.name||t.itemName)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;text-align:center;font-weight:bold'>"+txStyle(t).sign+t.qty+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(t.person)+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt'>"+esc(t.reasonCode||"")+"</td><td style='padding:6pt 8pt;border:1pt solid #ddd;font-size:9pt;color:#666'>"+esc(t.purpose||"")+"</td></tr>";}).join("");
   var doc="<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Report</title><style>body{font-family:Calibri,Arial,sans-serif;margin:0;color:#1a1a1a}h2{font-size:12pt;font-weight:600;color:#1F4E79;margin:16pt 0 8pt;border-bottom:1pt solid #ddd;padding-bottom:4pt}table{border-collapse:collapse;width:100%;margin-bottom:14pt}th{background:#1F4E79;color:#fff;padding:7pt 9pt;font-size:9pt;text-align:left}</style></head><body>"
     +"<div style='background:linear-gradient(135deg,#1F4E79,#2E74B5);padding:36pt;margin-bottom:24pt'>"
     +"<div style='font-size:9pt;color:#BDD7EE;margin-bottom:8pt'>OSPREY INVENTORY MANAGEMENT SYSTEM</div>"
@@ -3116,6 +3154,7 @@ return;}
     if(a==="tx-add"){if(!canAdmin())return;S.modal={type:"txadd"};showModal(buildTxEditModal(null));return;}
     if(a==="tx-save"){if(!canAdmin())return;submitTxEdit(el.getAttribute("data-txid")||null);return;}
     if(a==="tx-delete"){if(!canAdmin())return;deleteTxRecord(el.getAttribute("data-txid"));return;}
+    if(a==="tx-return"){if(!canAdmin())return;returnToStock(el.getAttribute("data-txid"));return;}
     return;
   }
 
@@ -3283,9 +3322,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-QTYFIX (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD QTYFIX LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 QTYFIX";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-RETURN (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD RETURN LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RETURN";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
