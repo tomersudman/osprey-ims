@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-RETURN</title>
+<title>OSPREY IMS v-STOCKFIX</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -381,6 +381,7 @@ function normalizeSheetItems(items){
     });
     if(typeof it.lots==="string"&&it.lots.trim()){try{it.lots=JSON.parse(it.lots);}catch(e){delete it.lots;}}
     if(!Array.isArray(it.lots))delete it.lots;
+    reconcileItem(it);
   });
   return items;
 }
@@ -484,6 +485,7 @@ function startAutoSync() {
   SYNC_INTERVAL = setInterval(function(){
     if(!syncStatus())return;
     if(S._bulkPending)return;
+    if(typeof _bulkMatches!=="undefined"&&_bulkMatches.length)return; // import preview open
     var md=document.getElementById("md");
     if(md&&md.children.length)return; // a modal is open — don't clobber an in-progress edit
     fetch(SCRIPT_URL+"?action=getAll",{method:"GET"}).then(function(r){return r.json();}).then(function(d){
@@ -522,6 +524,7 @@ function load() {
   } catch(e) { S.items=cp(SEED); S.tx=[]; S.users=cp(DEFAULT_USERS); }
 }
 function save() {
+  try{(S.items||[]).forEach(reconcileItem);}catch(e){}
   try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users,rma:S.rma,newItems:S._newItems||[]})); } catch(e) {}
 }
 
@@ -671,6 +674,20 @@ function addNonSerialBatch(item,qty,loc,box,exp,note,date,inv){
   item.qty=item.lots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);
 }
 // Apply a net stock change to a non-serial item's batches (keeps item.qty = sum of batches)
+// Stock invariants: serialized stock = number of serials; batched stock = sum of batches
+function reconcileItem(it){
+  if(!it)return;
+  if(Array.isArray(it.serials)&&it.serials.length){it.qty=it.serials.length;return;}
+  if(Array.isArray(it.lots)&&it.lots.length){it.qty=it.lots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);}
+}
+// Expected stock from the transaction ledger (only when the item's full history is on record)
+function ledgerQty(item){
+  var txs=S.tx.filter(function(t){return t.itemId===item.id;}).sort(function(a,b){return (a.ts||0)-(b.ts||0);});
+  if(!txs.length)return null;
+  var f=txs[0];
+  if(f.type!=="receive"||["Import","Add"].indexOf(f.reasonCode)<0||(parseInt(f.qty)||0)!==(parseInt(item.initialQty)||0))return null;
+  return txs.reduce(function(s,t){return s+txEffect(t.type,t.qty);},0);
+}
 function applyQtyDeltaToLots(item,delta){
   if(!Array.isArray(item.lots)||!item.lots.length){item.qty=Math.max(0,(parseInt(item.qty)||0)+delta);return;}
   if(delta>0){
@@ -1526,6 +1543,8 @@ function detailHTML(item){
     '<div style="margin-top:11px;height:8px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+bc+';border-radius:6px;transition:width .3s"></div></div>'+
     '<div style="margin-top:10px;font-size:12px;color:var(--tx2)">Original <b style="color:var(--tx)">'+(parseInt(item.initialQty)||0)+'</b> &nbsp;\u00b7&nbsp; Drawn <b style="color:var(--tx)">'+drawn+'</b> &nbsp;\u00b7&nbsp; Received <b style="color:var(--tx)">'+recvd+'</b></div>'+
     '</div>'+
+    (function(){var L=ledgerQty(item);if(L===null||L===(parseInt(item.qty)||0)||(Array.isArray(item.serials)&&item.serials.length))return "";
+      return '<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 Stock shows <b>'+(parseInt(item.qty)||0)+'</b> but the transactions add up to <b>'+L+'</b>.</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-stock" data-id="'+esc(item.id)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Set stock to '+L+'</button>':'')+'</div>';})()+
     (showTable?serialLocationSection(item):showLotTable?lotSection(item):
       '<div class="ds"><div class="dst">Placement</div><div class="dg2">'+
       dfield2("Location",itemDisplayLoc(item)?'<span class="loctag">'+esc(itemDisplayLoc(item))+'</span>':'<span style="color:var(--tx3)">---</span>')+
@@ -1761,7 +1780,7 @@ function renderInventory(){
 function txEffect(type,qty){var q=parseInt(qty)||0;return type==="receive"?q:(type==="draw"?-q:0);}
 function txStyle(t){
   if(t.type==="draw")return{tag:"txdd",lbl:"DRAW",lbl2:"DRAW",sign:"-",col:"var(--red)"};
-  if(t.type==="return")return{tag:"txdb",lbl:"RETURNED",lbl2:"RETURNED",sign:"\u21a9 ",col:"var(--blue2)"};
+  if(t.type==="return")return{tag:"txdb",lbl:"RTRN",lbl2:"RETURNED",sign:"\u21a9 ",col:"var(--blue2)"};
   return{tag:"txdr",lbl:"RECV",lbl2:"RECEIVE",sign:"+",col:"var(--green)"};
 }
 function returnToStock(txid){
@@ -1791,6 +1810,55 @@ function returnToStock(txid){
   if(syncStatus()){showSyncBadge("saving");pushToSheets();}
   closeModal();renderAll();
 }
+function txImportFields(t,item,isAdd){
+  S._txEditSerial="";
+  if(isAdd||!item||t.type!=="receive")return "";
+  var sn=String(t.serial||t.sn||"").trim();
+  var h='<div class="ff" style="margin-top:6px;padding-top:10px;border-top:1px solid var(--bd)"><label class="fl" style="color:var(--tx)">Received unit details</label><div style="font-size:11px;color:var(--tx3)">Changes here update the item itself.</div></div>';
+  if(sn&&itemSerials(item).map(function(s){return String(s).trim();}).indexOf(sn)>=0){
+    S._txEditSerial=sn;
+    h+='<div><label class="fl">S/N</label><input id="tx-sn" type="text" value="'+esc(sn)+'" style="width:100%;font-family:monospace"></div>'+
+       '<div><label class="fl">PL #</label><input id="tx-pl" type="text" value="'+esc(rawSerialInv(item,sn)||t.invoice||"")+'" style="width:100%"></div>'+
+       '<div><label class="fl">Location</label><select id="tx-loc" style="width:100%">'+locOptions(serialLoc(item,sn))+'</select></div>'+
+       '<div><label class="fl">Box</label><input id="tx-box" type="text" value="'+esc(serialBox(item,sn)||"")+'" style="width:100%"></div>'+
+       '<div><label class="fl">Expiry</label><input id="tx-exp" type="date" value="'+esc(serialExpiry(item,sn)||"")+'" style="width:100%"></div>'+
+       '<div><label class="fl">Comment</label><input id="tx-cmt" type="text" value="'+esc(serialNote(item,sn)||"")+'" style="width:100%"></div>';
+  } else {
+    h+='<div><label class="fl">PL #</label><input id="tx-pl" type="text" value="'+esc(t.invoice||"")+'" style="width:100%"></div>';
+    if(!(Array.isArray(item.lots)&&item.lots.length)&&!isSerialized(item)){
+      h+='<div><label class="fl">Location</label><select id="tx-loc" style="width:100%">'+locOptions(item.location||"")+'</select></div>'+
+         '<div><label class="fl">Box</label><input id="tx-box" type="text" value="'+esc(item.floor||"")+'" style="width:100%"></div>'+
+         '<div><label class="fl">Expiry</label><input id="tx-exp" type="date" value="'+esc(item.expiry||"")+'" style="width:100%"></div>'+
+         '<div><label class="fl">Comment</label><input id="tx-cmt" type="text" value="'+esc(item.notes||"")+'" style="width:100%"></div>';
+    }
+  }
+  return h;
+}
+function applyTxImportFields(t,item,date){
+  var g=function(id){var e=document.getElementById(id);return e?(e.value||"").trim():null;};
+  var pl=g("tx-pl"); if(pl!==null)t.invoice=pl;
+  var old=S._txEditSerial;
+  if(old){
+    var nsn=g("tx-sn")||old;
+    if(nsn!==old){
+      item.serials=itemSerials(item).map(function(s){return String(s).trim()===old?nsn:s;});
+      ["serialLocations","serialBoxes","serialExpiry","serialNotes","serialShipDate","serialInvoice"].forEach(function(k){if(item[k]&&item[k][old]!=null){item[k][nsn]=item[k][old];delete item[k][old];}});
+      if(String(item.sn||"").trim()===old)item.sn=nsn;
+      S.tx.forEach(function(x){if(x.itemId===item.id&&String(x.serial||x.sn||"").trim()===old){x.serial=nsn;x.sn=nsn;}});
+    }
+    var loc=g("tx-loc"); if(loc&&loc!=="__other__")setSerialLoc(item,nsn,loc);
+    var box=g("tx-box"); if(box!==null)setSerialBox(item,nsn,box);
+    var exp=g("tx-exp"); if(exp!==null)setSerialExpiry(item,nsn,exp);
+    var cmt=g("tx-cmt"); if(cmt!==null)setSerialNote(item,nsn,cmt);
+    if(!item.serialInvoice)item.serialInvoice={}; if(pl)item.serialInvoice[nsn]=pl; else delete item.serialInvoice[nsn];
+    if(!item.serialShipDate)item.serialShipDate={}; if(date)item.serialShipDate[nsn]=date;
+    var s0=itemSerials(item)[0]; if(s0){var l0=serialLoc(item,s0); if(l0&&l0!=="Unknown")item.location=l0;}
+  } else if(document.getElementById("tx-loc")){
+    var l=g("tx-loc"); if(l&&l!=="__other__")item.location=l;
+    item.floor=g("tx-box")||""; item.expiry=g("tx-exp")||""; item.notes=g("tx-cmt")||"";
+    if(pl!==null)item.invoice=pl; if(date)item.shipDate=date;
+  }
+}
 function buildTxEditModal(txid){
   var isAdd=!txid;
   var t=isAdd?{type:"draw",qty:1,date:tod(),person:(S._fullName||(S.currentUser?S.currentUser.name:"")),reasonCode:"",purpose:"",itemId:""}:S.tx.find(function(x){return x.id===txid;});
@@ -1817,6 +1885,7 @@ function buildTxEditModal(txid){
     '<div><label class="fl">Reason</label><input id="tx-reason" type="text" value="'+esc(t.reasonCode||"")+'" placeholder="e.g. Maintenance" list="tx-reason-dl" style="width:100%"><datalist id="tx-reason-dl">'+REASONS.map(function(r){return '<option value="'+esc(r)+'">';}).join('')+'</datalist></div>'+
     '<div class="ff"><label class="fl">Note / content</label><input id="tx-note" type="text" value="'+esc(t.purpose||"")+'" style="width:100%"></div>'+
     '<div class="ff" style="margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="tx-adjust" checked onchange="txPreview()"> Adjust current stock by this change</label><div id="tx-adjust-preview" style="font-size:12px;color:var(--tx2);margin-top:4px"></div></div>'+
+    txImportFields(t,item,isAdd)+
     warn+
     '</div></div>'+
     '<div class="mf">'+
@@ -1852,13 +1921,16 @@ function submitTxEdit(txid){
   var itemId=isAdd?((document.getElementById("tx-item")||{}).value):S._txEditItemId;
   var item=S.items.find(function(i){return i.id===itemId;});
   if(isAdd&&!item){alert("Please select an item.");return;}
+  if(!isAdd&&item&&S._txEditSerial){var _nsn=((document.getElementById("tx-sn")||{}).value||"").trim();
+    if(_nsn&&_nsn!==S._txEditSerial&&itemSerials(item).map(function(s){return String(s).trim();}).indexOf(_nsn)>=0){alert("S/N "+_nsn+" already exists on this item.");return;}}
   var oldEffect=isAdd?0:(S._txEditOldEffect||0);
   if(item&&adjust){if(isSerialized(item)){item.qty=itemSerials(item).length;}else if(Array.isArray(item.lots)&&item.lots.length){applyQtyDeltaToLots(item,txEffect(typ,qty)-oldEffect);}else{item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));}markDirty(item.id);}
   if(isAdd){
     S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:typ,qty:qty,date:date,person:person,purpose:note,reasonCode:reason,remaining:(item?item.qty:0),sn:"",invoice:"",ts:Date.now()});
   } else {
     var t=S.tx.find(function(x){return x.id===txid;});
-    if(t){t.type=typ;t.qty=qty;t.date=date;t.person=person;t.reasonCode=reason;t.purpose=note;if(item&&adjust)t.remaining=item.qty;}
+    if(t){t.type=typ;t.qty=qty;t.date=date;t.person=person;t.reasonCode=reason;t.purpose=note;if(item&&adjust)t.remaining=item.qty;
+      if(item&&typ==="receive"){applyTxImportFields(t,item,date);markDirty(item.id);}}
   }
   save();
   if(syncStatus()){showSyncBadge("saving");pushToSheets();}
@@ -2767,6 +2839,7 @@ function executeBulkImport(){
   var arrInv=((document.getElementById("bulk-invoice")||{}).value||"").trim();
   var importedTx=[];
   _bulkMatches.forEach(function(r,i){
+    if(r.match){var _fresh=S.items.find(function(x){return x.id===r.match.id;});if(_fresh)r.match=_fresh;}
     var eSn=(r.row.sn||"").trim();
     var eLoc=(r.row.location||"").trim();
     var eBox=(r.row.floor||"").trim();
@@ -3155,6 +3228,7 @@ return;}
     if(a==="tx-save"){if(!canAdmin())return;submitTxEdit(el.getAttribute("data-txid")||null);return;}
     if(a==="tx-delete"){if(!canAdmin())return;deleteTxRecord(el.getAttribute("data-txid"));return;}
     if(a==="tx-return"){if(!canAdmin())return;returnToStock(el.getAttribute("data-txid"));return;}
+    if(a==="fix-stock"){if(!canAdmin())return;var _fi=S.items.find(function(x){return x.id===id;});var _L=_fi?ledgerQty(_fi):null;if(_fi&&_L!==null){applyQtyDeltaToLots(_fi,_L-(parseInt(_fi.qty)||0));markDirty(_fi.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_fi));renderPage();}return;}
     return;
   }
 
@@ -3322,9 +3396,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-RETURN (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD RETURN LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 RETURN";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-STOCKFIX (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD STOCKFIX LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 STOCKFIX";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
