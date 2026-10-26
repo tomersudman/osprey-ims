@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-STOCKFIX</title>
+<title>OSPREY IMS v-STOCKFIX-2</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -675,6 +675,16 @@ function addNonSerialBatch(item,qty,loc,box,exp,note,date,inv){
 }
 // Apply a net stock change to a non-serial item's batches (keeps item.qty = sum of batches)
 // Stock invariants: serialized stock = number of serials; batched stock = sum of batches
+function hasSerial(item,sn){sn=String(sn||"").trim();return !!sn&&!!item&&itemSerials(item).map(function(s){return String(s).trim();}).indexOf(sn)>=0;}
+// Serial-level ledger check: receipts recorded twice, or received serials missing from stock
+function serialLedgerIssues(item){
+  var net={};
+  S.tx.forEach(function(t){if(t.itemId!==item.id)return;var s=String(t.serial||t.sn||"").trim();if(!s)return;
+    if(t.type==="receive")net[s]=(net[s]||0)+1; else if(t.type==="draw")net[s]=(net[s]||0)-1;});
+  var dups=[],missing=[];
+  Object.keys(net).forEach(function(s){if(net[s]>1)dups.push(s);else if(net[s]===1&&!hasSerial(item,s))missing.push(s);});
+  return {dups:dups,missing:missing};
+}
 function reconcileItem(it){
   if(!it)return;
   if(Array.isArray(it.serials)&&it.serials.length){it.qty=it.serials.length;return;}
@@ -1526,7 +1536,7 @@ function detailHTML(item){
         if(t.invoice)notes+=" \u2013 PL "+esc(t.invoice);
       }
       var _tsn=t.serial||t.sn;
-      if(_tsn&&notes.indexOf(String(_tsn))<0)notes+=" \u00b7 S/N "+esc(_tsn);
+      if(_tsn&&notes.indexOf("S/N")<0)notes+=" \u00b7 S/N "+esc(_tsn);
       tl+='<div class="tlr'+(_adm?' tla':'')+'"><span style="color:var(--tx2)">'+fd(t.date)+'</span><span><span class="txd '+tag+'">'+lbl+'</span></span><span style="font-weight:500">'+esc(t.person)+'</span><span style="font-weight:600;color:'+col+'">'+sign+t.qty+'</span><span style="color:var(--tx2)">'+t.remaining+'</span><span style="color:var(--tx2)">'+notes+'</span>'+(_adm?'<span><button class="btn sm" data-action="tx-edit" data-txid="'+esc(t.id)+'" style="padding:0 8px">Edit</button></span>':'')+'</div>';
     });
   }
@@ -1545,6 +1555,12 @@ function detailHTML(item){
     '</div>'+
     (function(){var L=ledgerQty(item);if(L===null||L===(parseInt(item.qty)||0)||(Array.isArray(item.serials)&&item.serials.length))return "";
       return '<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 Stock shows <b>'+(parseInt(item.qty)||0)+'</b> but the transactions add up to <b>'+L+'</b>.</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-stock" data-id="'+esc(item.id)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Set stock to '+L+'</button>':'')+'</div>';})()+
+    (function(){if(!(Array.isArray(item.serials)&&item.serials.length)&&!S.tx.some(function(t){return t.itemId===item.id&&(t.serial||t.sn);}))return "";
+      var I=serialLedgerIssues(item);if(!I.dups.length&&!I.missing.length)return "";
+      var box='<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--amber)">';
+      I.dups.forEach(function(s){box+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0"><span>\u26A0 S/N <b>'+esc(s)+'</b> was recorded as received more than once (only one unit can exist).</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-dup" data-id="'+esc(item.id)+'" data-sn="'+esc(s)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Remove duplicate record</button>':'')+'</div>';});
+      I.missing.forEach(function(s){box+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0"><span>\u26A0 S/N <b>'+esc(s)+'</b> was received and never drawn, but isn\'t in stock.</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-missing" data-id="'+esc(item.id)+'" data-sn="'+esc(s)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Put back in stock</button>':'')+'</div>';});
+      return box+'</div>';})()+
     (showTable?serialLocationSection(item):showLotTable?lotSection(item):
       '<div class="ds"><div class="dst">Placement</div><div class="dg2">'+
       dfield2("Location",itemDisplayLoc(item)?'<span class="loctag">'+esc(itemDisplayLoc(item))+'</span>':'<span style="color:var(--tx3)">---</span>')+
@@ -1814,7 +1830,7 @@ function txImportFields(t,item,isAdd){
   S._txEditSerial="";
   if(isAdd||!item||t.type!=="receive")return "";
   var sn=String(t.serial||t.sn||"").trim();
-  var h='<div class="ff" style="margin-top:6px;padding-top:10px;border-top:1px solid var(--bd)"><label class="fl" style="color:var(--tx)">Received unit details</label><div style="font-size:11px;color:var(--tx3)">Changes here update the item itself.</div></div>';
+  var h='';
   if(sn&&itemSerials(item).map(function(s){return String(s).trim();}).indexOf(sn)>=0){
     S._txEditSerial=sn;
     h+='<div><label class="fl">S/N</label><input id="tx-sn" type="text" value="'+esc(sn)+'" style="width:100%;font-family:monospace"></div>'+
@@ -1884,8 +1900,8 @@ function buildTxEditModal(txid){
     '<div><label class="fl">Person *</label><input id="tx-person" type="text" value="'+esc(t.person||"")+'" style="width:100%"></div>'+
     '<div><label class="fl">Reason</label><input id="tx-reason" type="text" value="'+esc(t.reasonCode||"")+'" placeholder="e.g. Maintenance" list="tx-reason-dl" style="width:100%"><datalist id="tx-reason-dl">'+REASONS.map(function(r){return '<option value="'+esc(r)+'">';}).join('')+'</datalist></div>'+
     '<div class="ff"><label class="fl">Note / content</label><input id="tx-note" type="text" value="'+esc(t.purpose||"")+'" style="width:100%"></div>'+
-    '<div class="ff" style="margin-top:2px"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="tx-adjust" checked onchange="txPreview()"> Adjust current stock by this change</label><div id="tx-adjust-preview" style="font-size:12px;color:var(--tx2);margin-top:4px"></div></div>'+
     txImportFields(t,item,isAdd)+
+    '<div class="ff" style="margin-top:6px;padding-top:12px;border-top:1px solid var(--bd)"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="tx-adjust" checked onchange="txPreview()"> Adjust current stock by this change</label><div id="tx-adjust-preview" style="font-size:12px;color:var(--tx2);margin-top:4px"></div></div>'+
     warn+
     '</div></div>'+
     '<div class="mf">'+
@@ -1946,7 +1962,9 @@ function deleteTxRecord(txid){
     var _ts=String(t.serial||t.sn||"").trim();
     if(t.type==="return"){ /* drawn then returned: net effect 0 */ }
     else if(isSerialized(item)&&_ts){
-      if(t.type==="receive"){
+      var _otherRcv=S.tx.some(function(x){return x.id!==t.id&&x.itemId===item.id&&x.type==="receive"&&String(x.serial||x.sn||"").trim()===_ts;});
+      if(t.type==="receive"&&_otherRcv){ /* duplicate receipt record: removing it must not remove the unit */ }
+      else if(t.type==="receive"){
         if(Array.isArray(item.serials))item.serials=item.serials.filter(function(s){return String(s).trim()!==_ts;});
         ["serialLocations","serialBoxes","serialExpiry","serialNotes","serialShipDate","serialInvoice"].forEach(function(k){if(item[k]){delete item[k][_ts];delete item[k][t.serial];delete item[k][t.sn];}});
       } else {
@@ -2765,6 +2783,11 @@ function parseBulkPaste(){
     if(nm)return{row:row,status:"cname",match:nm,reason:"Same desc, diff PN: "+esc(nm.pn),location:nm.location};
     return{row:row,status:"new",match:null,location:""};
   });
+  var _seenSn={};
+  res.forEach(function(r){var sn=(r.row.sn||"").trim();if(!sn)return;
+    var key=(r.row.pn||"").trim().toLowerCase()+"|"+(r.row.name||"").trim().toLowerCase()+"|"+sn.toLowerCase();
+    if((r.status==="exact"&&hasSerial(r.match,sn))||_seenSn[key])r.dupSn=true;
+    _seenSn[key]=1;});
   _bulkMatches=res;
   var nN=res.filter(function(r){return r.status==="new";}).length,nU=res.filter(function(r){return r.status==="exact";}).length,nC=res.filter(function(r){return r.status!=="new"&&r.status!=="exact";}).length;
   var pill=function(id,color,label){return '<button class="bulk-filter-pill" data-filter="'+id+'" style="cursor:pointer;border:1px solid '+color+';background:transparent;color:'+color+';border-radius:12px;font-size:12px;padding:3px 12px;margin-right:6px;font-weight:600">'+label+'</button>';};
@@ -2781,7 +2804,8 @@ function parseBulkPaste(){
     else if(r.status==="cname"){sc="var(--amber)";sl="\u26A0 REVIEW: same name, different P/N";}
     else {sc="var(--amber)";sl="\u26A0 REVIEW";}
     if(qtyMissing){sc="var(--red)";sl="QTY NOT INSERTED";}
-    var chk=(r.status==="cpn"||r.status==="cname")?"":"checked";
+    if(r.dupSn){sc="var(--red)";sl="\u26D4 S/N "+esc(r.row.sn)+" ALREADY IN STOCK \u2014 will be skipped";}
+    var chk=(r.status==="cpn"||r.status==="cname"||r.dupSn)?"":"checked";
     var locCell;
     if(r.status==="new"){
       var rl=(r.row.location&&r.row.location.trim())?r.row.location.trim():"";
@@ -2808,11 +2832,12 @@ function parseBulkPaste(){
   document.getElementById("bulk-preview").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
-function showImportDone(ad,up,sk){
+function showImportDone(ad,up,sk,dups){
   var line=function(icon,color,txt){return '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg);border:1px solid var(--bd);border-radius:9px;margin-bottom:8px"><span style="font-size:18px;color:'+color+'">'+icon+'</span><span style="font-size:14px;color:var(--tx)">'+txt+'</span></div>';};
   var html='<div class="mh"><div class="mt">Import complete</div><button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb">'+
     '<div style="font-size:15px;font-weight:600;color:var(--tx);margin-bottom:14px">Done!</div>'+
+    ((dups&&dups.length)?'<div style="background:var(--rbg);border:1px solid var(--red);color:var(--red);border-radius:9px;padding:10px 14px;margin-bottom:10px;font-size:13px">\u26D4 Skipped — S/N already in stock: <b>'+dups.map(esc).join(', ')+'</b></div>':'')+
     line('\u2713','var(--green)','<b>'+ad+'</b> new item'+(ad===1?'':'s')+' added')+
     line('\u2713','var(--blue2)','<b>'+up+'</b> item'+(up===1?'':'s')+' updated')+
     line('\u23ed','var(--tx3)','<b>'+sk+'</b> item'+(sk===1?'':'s')+' skipped')+
@@ -2837,7 +2862,7 @@ function executeBulkImport(){
   var ad=0,up=0,sk=0;
   var arrDate=(document.getElementById("bulk-arrival-date")||{}).value||tod();
   var arrInv=((document.getElementById("bulk-invoice")||{}).value||"").trim();
-  var importedTx=[];
+  var importedTx=[],_dupSkipped=[];
   _bulkMatches.forEach(function(r,i){
     if(r.match){var _fresh=S.items.find(function(x){return x.id===r.match.id;});if(_fresh)r.match=_fresh;}
     var eSn=(r.row.sn||"").trim();
@@ -2849,6 +2874,7 @@ function executeBulkImport(){
     var slEl=document.getElementById("bulk-serloc-"+i);
     var serLoc=slEl?slEl.value:eLoc;
     var importInto=function(target,locForBatch){
+      if(eSn&&hasSerial(target,eSn)){_dupSkipped.push(eSn);return null;}
       if(eSn){var a=mergeSerialIntoItem(target,eSn,locForBatch,eBox,eExp,eNote,rQty);stampShipMeta(target,eSn,arrDate,arrInv);return a;}
       addNonSerialBatch(target,rQty,locForBatch,eBox,eExp,eNote,arrDate,arrInv);
       return rQty;
@@ -2864,7 +2890,7 @@ function executeBulkImport(){
       var dec=decisions[i]||"skip";
       if(dec==="skip"){sk++;return;}
       if(dec==="merge"&&r.match){
-        var added=importInto(r.match,serLoc);up++;
+        var added=importInto(r.match,serLoc);if(added===null){sk++;return;}up++;
         importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:added,remaining:r.match.qty,serial:eSn});
         return;
       }
@@ -2873,7 +2899,7 @@ function executeBulkImport(){
     }
     if(skip[i]){sk++;return;}
     if(r.status==="exact"){
-      var added2=importInto(r.match,serLoc);up++;
+      var added2=importInto(r.match,serLoc);if(added2===null){sk++;return;}up++;
       importedTx.push({itemId:r.match.id,itemName:r.match.name,addQty:added2,remaining:r.match.qty,serial:eSn});
       return;
     }
@@ -2881,7 +2907,7 @@ function executeBulkImport(){
     var mpn=(r.row.pn||"").trim().toLowerCase(), mname=(r.row.name||"").trim().toLowerCase();
     var mergeTarget=(mpn&&mpn!=="---")?S.items.find(function(it){return (it.pn||"").trim().toLowerCase()===mpn&&(it.name||"").trim().toLowerCase()===mname;}):null;
     if(mergeTarget){
-      var added3=importInto(mergeTarget,serLoc||loc);up++;
+      var added3=importInto(mergeTarget,serLoc||loc);if(added3===null){sk++;return;}up++;
       importedTx.push({itemId:mergeTarget.id,itemName:mergeTarget.name,addQty:added3,remaining:mergeTarget.qty,serial:eSn});
     } else {
       buildNew(loc);
@@ -2891,7 +2917,7 @@ function executeBulkImport(){
     S.tx.push({id:String(Date.now()+(Math.random()*99999|0)),itemId:t.itemId,itemName:t.itemName,type:"receive",qty:t.addQty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import"+(arrInv?" (Inv "+arrInv+")":""),reasonCode:"Import",remaining:t.remaining,serial:t.serial||"",invoice:arrInv,ts:Date.now()});
   });
   save();_bulkMatches=[];if(syncStatus()){showSyncBadge("saving");pushToSheets();}
-  showImportDone(ad,up,sk);
+  showImportDone(ad,up,sk,_dupSkipped);
 }
 
 document.addEventListener("paste",function(ev){
@@ -3228,6 +3254,11 @@ return;}
     if(a==="tx-save"){if(!canAdmin())return;submitTxEdit(el.getAttribute("data-txid")||null);return;}
     if(a==="tx-delete"){if(!canAdmin())return;deleteTxRecord(el.getAttribute("data-txid"));return;}
     if(a==="tx-return"){if(!canAdmin())return;returnToStock(el.getAttribute("data-txid"));return;}
+    if(a==="fix-dup"||a==="fix-missing"){if(!canAdmin())return;var _di=S.items.find(function(x){return x.id===id;});var _ds=el.getAttribute("data-sn");if(!_di||!_ds)return;
+      if(a==="fix-dup"){var _rc=S.tx.filter(function(t){return t.itemId===_di.id&&t.type==="receive"&&String(t.serial||t.sn||"").trim()===_ds;}).sort(function(x,y){return (y.ts||0)-(x.ts||0);});
+        if(_rc.length>1){var _rm=_rc[0].id;S.tx=S.tx.filter(function(t){return t.id!==_rm;});}}
+      else{var _cur=itemSerials(_di);_cur.push(_ds);_di.serials=_cur;if(!_di.sn)_di.sn=_ds;reconcileItem(_di);}
+      markDirty(_di.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_di));renderPage();return;}
     if(a==="fix-stock"){if(!canAdmin())return;var _fi=S.items.find(function(x){return x.id===id;});var _L=_fi?ledgerQty(_fi):null;if(_fi&&_L!==null){applyQtyDeltaToLots(_fi,_L-(parseInt(_fi.qty)||0));markDirty(_fi.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_fi));renderPage();}return;}
     return;
   }
@@ -3396,9 +3427,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-STOCKFIX (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD STOCKFIX LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 STOCKFIX";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-STOCKFIX-2 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD STOCKFIX-2 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 STOCKFIX-2";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
