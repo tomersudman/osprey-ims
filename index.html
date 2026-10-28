@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-STOCKFIX-4</title>
+<title>OSPREY IMS v-SAFESYNC-3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -399,110 +399,204 @@ function mergeSyncedItems(incoming){
   Object.keys(dirty).forEach(function(id){if(!inById[id]){var loc=S.items.find(function(x){return x.id===id;});if(loc)merged.push(loc);}});
   return merged;
 }
-function loadFromSheets(callback) {
-  if (!syncStatus()) { if(callback) callback(false); return; }
-  showSyncBadge("loading");
-  fetch(SCRIPT_URL + "?action=getAll", {method:"GET"})
+// ── SAFE SYNC ────────────────────────────────────────────────────────────────
+// Every local change is captured (diff against the last state the sheet confirmed), queued on this
+// device, and sent as one version-checked "commit". Nothing is ever rewritten wholesale; if someone
+// else changed the same item first, the change is refused and the user is told. Unsent changes survive
+// reloads and are retried automatically.
+// Unique ids: strictly increasing on this device + random digits so two devices can't collide
+var _uidLast=0;
+function uid(){var t=Date.now();if(t<=_uidLast)t=_uidLast+1;_uidLast=t;var a="abcdefghijkmnpqrstuvwxyz",s="";for(var i=0;i<3;i++)s+=a.charAt(Math.floor(Math.random()*a.length));return String(t)+s;}
+var OUTBOX_KEY="osprey_outbox_v1";
+S._outbox=[]; S._ver={}; S._base=null; S._seq=0; S._inflight=false; S._retryMs=0; S._retryTimer=null; S._syncProblem=""; S._needRefresh=false;
+function _syncClean(o){var c={};for(var k in o){if(!Object.prototype.hasOwnProperty.call(o,k))continue;if(k.charAt(0)==="_"||k==="updatedAt"||k==="updatedBy"||k==="lastOp")continue;c[k]=o[k];}return c;}
+function _syncStr(o){return JSON.stringify(_syncClean(o));}
+function rebuildBase(){
+  var B={items:{},tx:{},rma:{},users:JSON.stringify(S.users||[])};
+  var put=function(map,o){var k=String(o.id);if(!(k in map))map[k]=_syncStr(o);};
+  (S.items||[]).forEach(function(i){put(B.items,i);});
+  (S.tx||[]).forEach(function(t){put(B.tx,t);});
+  (S.rma||[]).forEach(function(r){put(B.rma,r);});
+  S._base=B;
+}
+function persistOutbox(){try{localStorage.setItem(OUTBOX_KEY,JSON.stringify({ops:S._outbox,ver:S._ver}));}catch(e){}}
+function loadOutbox(){try{var d=JSON.parse(localStorage.getItem(OUTBOX_KEY)||"null");if(d){S._outbox=Array.isArray(d.ops)?d.ops:[];S._ver=d.ver||{};}}catch(e){}}
+function _diffList(list,baseMap,outUp,outDel){
+  var seen={};
+  (list||[]).forEach(function(o){var id=String(o.id);if(seen[id])return;var s=_syncStr(o);seen[id]=1;if(baseMap[id]!==s){outUp.push(JSON.parse(s));baseMap[id]=s;}});
+  Object.keys(baseMap).forEach(function(id){if(!seen[id]){outDel.push(id);delete baseMap[id];}});
+}
+// Called at the end of every save(): turns whatever changed into a queued, self-contained change set
+function captureChanges(){
+  if(!S._base||!syncStatus())return;
+  if(!S._syncedOnce){try{S._syncedOnce=localStorage.getItem("osprey_synced_once")==="1";}catch(e){}}
+  if(!S._syncedOnce)return; // never send anything before this device has loaded the real sheet once
+  var B=S._base,op={opId:Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10),items:[],itemDel:[],tx:[],txDel:[],rma:[],rmaDel:[],users:null,names:[]};
+  var delNames={};op.itemDel=[];
+  Object.keys(B.items).forEach(function(id){try{delNames[id]=JSON.parse(B.items[id]).name;}catch(e){}});
+  _diffList(S.items,B.items,op.items,op.itemDel);
+  _diffList(S.tx,B.tx,op.tx,op.txDel);
+  _diffList(S.rma,B.rma,op.rma,op.rmaDel);
+  var us=JSON.stringify(S.users||[]);if(us!==B.users){op.users=JSON.parse(us);B.users=us;}
+  if(!op.items.length&&!op.itemDel.length&&!op.tx.length&&!op.txDel.length&&!op.rma.length&&!op.rmaDel.length&&!op.users)return;
+  // Safety net: a bug or a bad restore must never wipe the sheet
+  var bigDel=(op.itemDel.length>10&&op.itemDel.length>(Object.keys(B.items).length+op.itemDel.length)*0.05)||(op.txDel.length>25);
+  if(bigDel&&!confirm("Safety check: this change would DELETE "+op.itemDel.length+" part(s) and "+op.txDel.length+" transaction(s) from the Google Sheet.\n\nOK = yes, delete them\nCancel = don't send it (the screen reloads from the sheet)")){
+    rebuildBase();refreshFromServer(true);return;
+  }
+  op.names=op.items.map(function(i){return i.name;}).concat(op.itemDel.map(function(id){return delNames[id]||id;}));
+  S._outbox.push(op);S._seq++;persistOutbox();showSyncBadge();
+  setTimeout(flushOutbox,0);
+}
+function saveLocalOnly(){try{localStorage.setItem(KEY,JSON.stringify({items:S.items,tx:S.tx,users:S.users,rma:S.rma,newItems:S._newItems||[]}));}catch(e){}}
+function flushOutbox(){
+  if(S._inflight||!S._outbox.length||!syncStatus())return;
+  if(S._retryTimer){clearTimeout(S._retryTimer);S._retryTimer=null;}
+  var op=S._outbox[0];S._inflight=true;showSyncBadge();
+  var expect={};
+  op.items.forEach(function(it){expect[it.id]=S._ver[it.id]||0;});
+  op.itemDel.forEach(function(id){expect[id]=S._ver[id]||0;});
+  var body={action:"commit",opId:op.opId,user:S._fullName||(S.currentUser?S.currentUser.name:""),items:op.items,itemDel:op.itemDel,expect:expect,tx:op.tx,txDel:op.txDel,rma:op.rma,rmaDel:op.rmaDel,users:op.users};
+  fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)})
     .then(function(r){return r.json();})
     .then(function(d){
-      if (d.items && d.items.length) {
-        // Normalize serials to arrays and parse serialBoxes/serialLocations if they came as strings
-        normalizeSheetItems(d.items);
-        S.items = mergeSyncedItems(d.items);
-        S.tx    = d.tx    || [];
-        S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);
-        if (d.users && d.users.length) S.users = d.users;
-        S._syncState = "ok";
-        showSyncBadge("ok");
-        // If login modal is open, refresh the user dropdown
-        var sel = document.getElementById("login-user");
-        if (sel) {
-          var opts = "";
-          S.users.forEach(function(u){ opts += '<option value="'+esc(u.id)+'">'+esc(u.name)+' ('+u.role+')</option>'; });
-          sel.innerHTML = opts;
-        }
-        if(callback) callback(true);
-      } else { S._syncState="err"; showSyncBadge("err"); if(callback) callback(false); }
-    })
-    .catch(function(){ S._syncState="err"; showSyncBadge("err"); if(callback) callback(false); });
-}
-
-// Push a single item update to Sheets (upsert)
-function pushItem(item) {
-  if (!syncStatus()) return;
-  fetch(SCRIPT_URL, {
-    method:"POST", headers:{"Content-Type":"text/plain"},
-    body: JSON.stringify({action:"saveItem", item:item})
-  }).then(function(r){return r.json();})
-    .then(function(d){ if(d&&d.ok!==false){clearDirty(item&&item.id);} S._syncState="ok"; showSyncBadge("ok"); })
-    .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
-}
-
-// Push a single new transaction to Sheets (append)
-function pushTx(tx) {
-  if (!syncStatus()) return;
-  if(tx&&tx.id){if(!S._dirtyTx)S._dirtyTx={};S._dirtyTx[tx.id]=1;S._lastWriteTs=Date.now();}
-  fetch(SCRIPT_URL, {
-    method:"POST", headers:{"Content-Type":"text/plain"},
-    body: JSON.stringify({action:"saveTx", tx:tx})
-  }).then(function(r){return r.json();})
-    .then(function(d){ if(d&&d.ok!==false&&tx&&tx.id&&S._dirtyTx)delete S._dirtyTx[tx.id]; S._syncState="ok"; showSyncBadge("ok"); })
-    .catch(function(){ S._syncState="err"; showSyncBadge("err"); });
-}
-
-// Full overwrite — only used for initial data seed from Users tab
-function pushToSheets() {
-  if (!syncStatus()) return;
-  S._bulkPending=true; S._lastWriteTs=Date.now();
-  showSyncBadge("saving");
-  fetch(SCRIPT_URL, {
-    method:"POST", headers:{"Content-Type":"text/plain"},
-    body: JSON.stringify({action:"saveAll", items:S.items, tx:S.tx, users:S.users, rma:S.rma})
-  }).then(function(r){return r.json();})
-    .then(function(d){ if(d&&d.ok){S._dirtyItems={};S._dirtyTx={};} S._bulkPending=false; S._syncState=d.ok?"ok":"err"; showSyncBadge(d.ok?"ok":"err"); })
-    .catch(function(){ S._bulkPending=false; S._syncState="err"; showSyncBadge("err"); });
-}
-
-function showSyncBadge(state) {
-  var el = document.getElementById("sync-badge");
-  if (!el) return;
-  var cfg = {
-    loading: {txt:"Syncing...",  col:"var(--amber)", bg:"var(--abg)"},
-    saving:  {txt:"Saving...",   col:"var(--amber)", bg:"var(--abg)"},
-    ok:      {txt:"Live",        col:"var(--green)", bg:"var(--gbg)"},
-    err:     {txt:"Offline",     col:"var(--red)",   bg:"var(--rbg)"}
-  };
-  var c = cfg[state] || cfg.err;
-  el.textContent = c.txt;
-  el.style.color = c.col;
-  el.style.background = c.bg;
-  el.style.borderColor = c.col;
-}
-
-function startAutoSync() {
-  if (!syncStatus()) return;
-  if (SYNC_INTERVAL) clearInterval(SYNC_INTERVAL);
-  SYNC_INTERVAL = setInterval(function(){
-    if(!syncStatus())return;
-    if(S._bulkPending)return;
-    if(typeof _bulkMatches!=="undefined"&&_bulkMatches.length)return; // import preview open
-    var md=document.getElementById("md");
-    if(md&&md.children.length)return; // a modal is open — don't clobber an in-progress edit
-    fetch(SCRIPT_URL+"?action=getAll",{method:"GET"}).then(function(r){return r.json();}).then(function(d){
-      if(d.items&&d.items.length){
-        normalizeSheetItems(d.items);
-        S.items=mergeSyncedItems(d.items);
-        var inTx={};(d.tx||[]).forEach(function(t){inTx[t.id]=1;});
-        var localOnly=(S.tx||[]).filter(function(t){return S._dirtyTx&&S._dirtyTx[t.id]&&!inTx[t.id];});
-        S.tx=(d.tx||[]).concat(localOnly);
-        if(migrateLegacyReturns()){save();pushToSheets();}
-        S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);
-        if(d.users&&d.users.length)S.users=d.users;
-        showSyncBadge("ok");
-        if(S.tab!=="bulk")renderPage();
+      S._inflight=false;
+      if(d&&d.ok){
+        if(S._outbox[0]===op)S._outbox.shift();
+        Object.keys(d.stamps||{}).forEach(function(id){S._ver[id]=d.stamps[id];var it=(S.items||[]).find(function(x){return String(x.id)===String(id);});if(it)it.updatedAt=d.stamps[id];});
+        op.itemDel.forEach(function(id){delete S._ver[id];});
+        S._retryMs=0;S._syncProblem="";persistOutbox();saveLocalOnly();showSyncBadge();
+        if(S._outbox.length)flushOutbox();
+        else if(S._needRefresh){S._needRefresh=false;refreshFromServer(true);}
+        return;
       }
-    }).catch(function(){showSyncBadge("err");});
+      if(d&&d.conflicts){handleConflicts(op,d.conflicts);return;}
+      if(d&&d.error&&/Unknown action/i.test(String(d.error))){S._syncProblem="script";scheduleRetry(60000);return;}
+      S._syncProblem=(d&&d.busy)?"busy":"error";scheduleRetry();
+    })
+    .catch(function(){S._inflight=false;S._syncProblem="offline";scheduleRetry();});
+}
+function scheduleRetry(ms){
+  S._retryMs=ms||Math.min(30000,Math.max(3000,(S._retryMs||1500)*2));
+  showSyncBadge();
+  if(S._retryTimer)clearTimeout(S._retryTimer);
+  S._retryTimer=setTimeout(function(){S._retryTimer=null;flushOutbox();},S._retryMs);
+}
+// Someone else changed an item first: drop this change (and later queued changes that build on it), reload, tell the user
+function handleConflicts(op,conflicts){
+  if(S._outbox[0]===op)S._outbox.shift();
+  var badItem={},badTx={},dropped=[op];
+  conflicts.forEach(function(c){badItem[String(c.id)]=1;});
+  var mark=function(o){o.items.forEach(function(i){badItem[String(i.id)]=1;});o.tx.forEach(function(t){badTx[String(t.id)]=1;});};
+  mark(op);
+  S._outbox=S._outbox.filter(function(o){
+    var hit=o.items.some(function(i){return badItem[String(i.id)];})||o.itemDel.some(function(id){return badItem[String(id)];})||o.tx.some(function(t){return badTx[String(t.id)];})||o.txDel.some(function(id){return badTx[String(id)];});
+    if(hit){dropped.push(o);mark(o);}return !hit;
+  });
+  persistOutbox();
+  var names=[];
+  conflicts.forEach(function(c){
+    var nm=(c.item&&c.item.name)||"";
+    if(!nm)op.items.forEach(function(i){if(String(i.id)===String(c.id))nm=i.name;});
+    var when=c.at?new Date(Number(c.at)):null;
+    names.push('<li><b>'+esc(nm||c.id)+'</b>'+(c.item?(' — changed'+(c.by?' by <b>'+esc(c.by)+'</b>':'')+(when?' at '+esc(fd(when.toISOString().slice(0,10)))+' '+esc(('0'+when.getHours()).slice(-2)+':'+('0'+when.getMinutes()).slice(-2)):'')):' — deleted by someone else')+'</li>');
+  });
+  refreshFromServer(true,function(){
+    showSyncMessage('<div class="mh"><div class="mt" style="color:var(--amber)">⚠ Your last change was NOT saved</div><button class="mc" id="modal-close-btn">x</button></div>'+
+      '<div class="mb" style="font-size:13px;line-height:1.6">Someone else changed this item while you were working:<ul style="margin:8px 0 8px 18px">'+names.join("")+'</ul>'+
+      'To protect their change, yours was <b>not</b> saved'+(dropped.length>1?' (nor '+(dropped.length-1)+' later change(s) to the same item)':'')+'. Nothing was overwritten.<br>The screen now shows the latest data from the sheet — please open the item, check it, and redo your change if it is still needed.</div>'+
+      '<div class="mf"><button class="btn bp" id="modal-close-btn2">OK</button></div>');
+  });
+}
+function showSyncMessage(html){if(_modalOpen())S._pendingMsg=html;else showModal(html);}
+function applyOpLocally(op){
+  op.items.forEach(function(it){var c=JSON.parse(JSON.stringify(it));var i=S.items.findIndex(function(x){return String(x.id)===String(c.id);});if(i>=0)S.items[i]=c;else S.items.push(c);});
+  if(op.itemDel.length){var d={};op.itemDel.forEach(function(id){d[String(id)]=1;});S.items=S.items.filter(function(x){return !d[String(x.id)];});}
+  op.tx.forEach(function(t){var c=JSON.parse(JSON.stringify(t));var i=S.tx.findIndex(function(x){return String(x.id)===String(c.id);});if(i>=0)S.tx[i]=c;else S.tx.push(c);});
+  if(op.txDel.length){var e={};op.txDel.forEach(function(id){e[String(id)]=1;});S.tx=S.tx.filter(function(x){return !e[String(x.id)];});}
+  op.rma.forEach(function(r){var c=JSON.parse(JSON.stringify(r));var i=S.rma.findIndex(function(x){return String(x.id)===String(c.id);});if(i>=0)S.rma[i]=c;else S.rma.push(c);});
+  if(op.rmaDel.length){var f={};op.rmaDel.forEach(function(id){f[String(id)]=1;});S.rma=S.rma.filter(function(x){return !f[String(x.id)];});}
+  if(op.users)S.users=JSON.parse(JSON.stringify(op.users));
+}
+// Replace local data with the sheet's, keeping any changes that are still waiting to be sent
+function acceptServer(d){
+  normalizeSheetItems(d.items||[]);
+  var pend={};S._outbox.forEach(function(o){o.items.forEach(function(i){pend[String(i.id)]=1;});o.itemDel.forEach(function(id){pend[String(id)]=1;});});
+  S.items=d.items||[];S.tx=d.tx||[];
+  if(Array.isArray(d.rma))S.rma=d.rma;
+  if(d.users&&d.users.length)S.users=d.users;
+  if(!Array.isArray(S.rma))S.rma=[];
+  S.items.forEach(reconcileItem);
+  var nv={};S.items.forEach(function(i){nv[String(i.id)]=Number(i.updatedAt)||0;});
+  Object.keys(pend).forEach(function(id){nv[id]=S._ver[id]||0;}); // queued edits keep the version they were based on
+  S._ver=nv;
+  S._outbox.forEach(applyOpLocally);
+  rebuildBase();
+  var _seenId={},_dups=[];S.items.forEach(function(i){var k=String(i.id);if(_seenId[k])_dups.push(i.name+" / "+_seenId[k]);else _seenId[k]=i.name;});
+  S._dupIds=_dups;if(_dups.length)console.warn("OSPREY: items sharing an ID:",_dups);
+  migrateLegacyReturns();
+  save(); // captures anything the migration changed
+  persistOutbox();
+  S._syncedOnce=true;try{localStorage.setItem("osprey_synced_once","1");}catch(e){}
+  setTimeout(flushOutbox,0);
+}
+function _modalOpen(){var md=document.getElementById("md");return !!(md&&md.children.length);}
+function refreshFromServer(force,cb){
+  if(!syncStatus())return;
+  if(!force&&(S._outbox.length||S._inflight||S._bulkPending||(typeof _bulkMatches!=="undefined"&&_bulkMatches.length)||_modalOpen()))return;
+  var seq0=S._seq;
+  if(force)showSyncBadge("loading");
+  fetch(SCRIPT_URL+"?action=getAll",{method:"GET",cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+    if(!(d&&d.items&&d.items.length)){
+      // Sheet answered but has no parts at all (brand-new sheet): upload what this device has
+      if(d&&d.ok&&Array.isArray(d.items)&&force&&!S._outbox.length){S._syncedOnce=true;try{localStorage.setItem("osprey_synced_once","1");}catch(e){}
+        S._base={items:{},tx:{},rma:{},users:"[]"};S._ver={};save();}
+      showSyncBadge();if(cb)cb(false);return;}
+    // a change happened while we were downloading: this copy may be older than the screen — throw it away
+    if(!force&&(S._seq!==seq0||S._outbox.length||S._inflight||_modalOpen()||(typeof _bulkMatches!=="undefined"&&_bulkMatches.length)))return;
+    acceptServer(d);
+    if(S._syncProblem!=="script")S._syncProblem="";
+    showSyncBadge();
+    if(force)renderAll();else if(S.tab!=="bulk")renderPage();
+    if(S._dupIds&&S._dupIds.length&&!S._dupWarned&&typeof canAdmin==="function"&&canAdmin()&&!_modalOpen()){S._dupWarned=true;
+      showModal('<div class="mh"><div class="mt" style="color:var(--amber)">\u26A0 Some parts share an internal ID</div><button class="mc" id="modal-close-btn">x</button></div><div class="mb" style="font-size:13px;line-height:1.6">These parts were created with the same internal ID (an old import issue), so the app can only reach the first one of each pair:<ul style="margin:8px 0 8px 18px">'+S._dupIds.slice(0,30).map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>Nothing is lost, but please send this list to Claude to merge them safely.</div><div class="mf"><button class="btn bp" id="modal-close-btn2">OK</button></div>');}
+    if(cb)cb(true);
+  }).catch(function(){if(force){S._syncProblem=S._syncProblem||"offline";setTimeout(function(){refreshFromServer(true,cb);},10000);}showSyncBadge();});
+}
+function loadFromSheets(callback){refreshFromServer(true,callback);}
+// Legacy entry points — all now go through the safe queue
+function pushItem(item){save();flushOutbox();}
+function pushTx(tx){save();flushOutbox();}
+function pushToSheets(){save();flushOutbox();}
+function showSyncBadge(state){
+  var el=document.getElementById("sync-badge");
+  if(!el)return;
+  var n=S._outbox.length,c;
+  if(S._syncProblem==="script")c={txt:"Script outdated",col:"var(--red)",bg:"var(--rbg)"};
+  else if(n&&(S._syncProblem==="offline"||S._syncProblem==="error"))c={txt:"Offline \u00b7 "+n+" unsaved",col:"var(--red)",bg:"var(--rbg)"};
+  else if(n)c={txt:"Saving\u2026",col:"var(--amber)",bg:"var(--abg)"};
+  else if(state==="loading")c={txt:"Syncing...",col:"var(--amber)",bg:"var(--abg)"};
+  else if(state==="err"||S._syncProblem==="offline")c={txt:"Offline",col:"var(--red)",bg:"var(--rbg)"};
+  else c={txt:"Live",col:"var(--green)",bg:"var(--gbg)"};
+  el.textContent=c.txt;el.style.color=c.col;el.style.background=c.bg;el.style.borderColor=c.col;
+  if(S._syncProblem==="script")el.title="The Google Apps Script must be redeployed (Manage deployments \u2192 New version). Your changes are kept on this device until then.";
+  else el.title=n?n+" change(s) waiting to be saved to the sheet. They are kept on this device and retried automatically — do not clear browser data.":"Everything is saved to the sheet.";
+}
+function startAutoSync(){
+  if(!syncStatus())return;
+  if(SYNC_INTERVAL)clearInterval(SYNC_INTERVAL);
+  SYNC_INTERVAL=setInterval(function(){
+    if(S._outbox.length){flushOutbox();return;}
+    refreshFromServer(false);
   },60000);
+}
+try{if(typeof BroadcastChannel!=="undefined"){var _bc=new BroadcastChannel("osprey_ims");
+  _bc.onmessage=function(e){if(e.data==="hello")_bc.postMessage("here");else if(e.data==="here"&&!S._twoTabsWarned){S._twoTabsWarned=true;
+    showSyncMessage('<div class="mh"><div class="mt" style="color:var(--amber)">\u26A0 The app is already open in another tab</div><button class="mc" id="modal-close-btn">x</button></div><div class="mb" style="font-size:13px;line-height:1.6">Please close one of the tabs and keep working in a single tab on this computer, so both don\'t try to save at the same time.</div><div class="mf"><button class="btn bp" id="modal-close-btn2">OK</button></div>');}};
+  _bc.postMessage("hello");}}catch(e){}
+if(typeof window!=="undefined"&&window.addEventListener){
+  window.addEventListener("beforeunload",function(e){if(S._outbox&&S._outbox.length){e.preventDefault();e.returnValue="Changes are still being saved.";return e.returnValue;}});
+  window.addEventListener("online",function(){S._syncProblem="";flushOutbox();});
 }
 
 function load() {
@@ -528,6 +622,7 @@ function load() {
 function save() {
   try{(S.items||[]).forEach(reconcileItem);}catch(e){}
   try { localStorage.setItem(KEY, JSON.stringify({items:S.items,tx:S.tx,users:S.users,rma:S.rma,newItems:S._newItems||[]})); } catch(e) {}
+  try{captureChanges();}catch(e){console.error("captureChanges",e);}
 }
 
 // Save item locally + push just that item to Sheets
@@ -1412,7 +1507,7 @@ function doAddUser() {
   var name=gv("u-name").trim(), pin=gv("u-pin").trim(), role=gv("u-role");
   if(!name){alert("Enter a name.");return;}
   if(!pin||pin.length<4){alert("PIN must be at least 4 digits.");return;}
-  S.users.push({id:String(Date.now()),name:name,pin:pin,role:role});
+  S.users.push({id:uid(),name:name,pin:pin,role:role});
   save();
   if(syncStatus()){showSyncBadge("saving");fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"saveUsers",users:S.users})}).then(function(r){return r.json();}).then(function(){showSyncBadge("ok");}).catch(function(){showSyncBadge("err");});}
   closeModal(); renderAll();
@@ -2025,7 +2120,7 @@ function submitTxEdit(txid){
   var oldEffect=isAdd?0:(S._txEditOldEffect||0);
   if(item&&adjust){if(isSerialized(item)){item.qty=itemSerials(item).length;}else if(Array.isArray(item.lots)&&item.lots.length){applyQtyDeltaToLots(item,txEffect(typ,qty)-oldEffect);}else{item.qty=Math.max(0,(parseInt(item.qty)||0)-oldEffect+txEffect(typ,qty));}markDirty(item.id);}
   if(isAdd){
-    S.tx.push({id:String(Date.now()),itemId:item.id,itemName:item.name,type:typ,qty:qty,date:date,person:person,purpose:note,reasonCode:reason,remaining:(item?item.qty:0),sn:"",invoice:"",ts:Date.now()});
+    S.tx.push({id:uid(),itemId:item.id,itemName:item.name,type:typ,qty:qty,date:date,person:person,purpose:note,reasonCode:reason,remaining:(item?item.qty:0),sn:"",invoice:"",ts:Date.now()});
   } else {
     var t=S.tx.find(function(x){return x.id===txid;});
     if(t){t.type=typ;t.qty=qty;t.date=date;t.person=person;t.reasonCode=reason;t.purpose=note;if(item&&adjust)t.remaining=item.qty;
@@ -2304,7 +2399,8 @@ function showModal(html, noClose) {
     });
   }
 }
-function closeModal(){ document.getElementById("md").innerHTML=""; S.modal=null; }
+function closeModal(){ document.getElementById("md").innerHTML=""; S.modal=null;
+  if(S._pendingMsg){var _m=S._pendingMsg;S._pendingMsg=null;setTimeout(function(){showModal(_m);},60);} }
 
 // ── SUBMIT ACTIONS ────────────────────────────────────────────────────────────
 function submitTx(){
@@ -2367,7 +2463,7 @@ function submitTx(){
       delete item.lots;
     }
   }
-  var newTx = {id:String(Date.now()),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",serial:snPicked||"",snap:snap,ts:Date.now()};
+  var newTx = {id:uid(),itemId:item.id,itemName:item.name,type:S.modal.type,qty:qty,date:date,person:person,purpose:purpose+(snPicked?" [S/N: "+snPicked+"]":"")+(drawLocLabel?" @ "+drawLocLabel:""),reasonCode:reason||"",remaining:item.qty,sn:snPicked||"",serial:snPicked||"",snap:snap,ts:Date.now()};
   markDirty(item.id);
   S.tx.push(newTx);
   saveAndPushTx(newTx);
@@ -2475,7 +2571,7 @@ function submitItem(id){
     var qty=parseInt(gv("m-qty"))||0;
     var nDate=document.getElementById("m-shipdate")?(gv("m-shipdate")||tod()):tod();
     var nInv=document.getElementById("m-invoice")?gv("m-invoice").trim():"";
-    item={id:String(Date.now()),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
+    item={id:uid(),pn:gv("m-pn")||"---",alt_pn:gv("m-altpn"),
       name:name,subsys:gv("m-subsys"),type:"",smr:"",
       sn:gv("m-sn"),location:loc,floor:gv("m-floor"),expiry:gv("m-expiry"),
       notes:gv("m-notes"),qty:qty,initialQty:qty};
@@ -2484,7 +2580,7 @@ function submitItem(id){
     S.items.push(item);
     if(!S._newItems)S._newItems=[];S._newItems.push(item.id);
     if((parseInt(item.qty)||0)>0){
-      var _nt={id:String(Date.now()+3),itemId:item.id,itemName:item.name,type:"receive",qty:parseInt(item.qty)||0,date:(item.shipDate||rawSerialShip(item,item.sn)||tod()),person:S._fullName||(S.currentUser?S.currentUser.name:"Manual add"),purpose:"New item added"+(item.sn?" [S/N: "+item.sn+"]":""),reasonCode:"Add",remaining:item.qty,sn:item.sn||"",invoice:(item.invoice||rawSerialInv(item,item.sn)||""),ts:Date.now()};
+      var _nt={id:uid(),itemId:item.id,itemName:item.name,type:"receive",qty:parseInt(item.qty)||0,date:(item.shipDate||rawSerialShip(item,item.sn)||tod()),person:S._fullName||(S.currentUser?S.currentUser.name:"Manual add"),purpose:"New item added"+(item.sn?" [S/N: "+item.sn+"]":""),reasonCode:"Add",remaining:item.qty,sn:item.sn||"",invoice:(item.invoice||rawSerialInv(item,item.sn)||""),ts:Date.now()};
       S.tx.push(_nt);S._pendingAddTx=_nt;
     }
   }
@@ -2527,7 +2623,7 @@ function showDuplicatePNDialog(existing, pending){
   document.getElementById("dup-merge").onclick=function(){mergeIntoExisting(existing.id,pending);};
   document.getElementById("dup-separate").onclick=function(){
     // Create as a genuinely separate line
-    var it={id:String(Date.now()),pn:pending.pn||"---",alt_pn:pending.alt_pn,name:pending.name,subsys:pending.subsys,type:"",smr:"",sn:pending.sn,location:pending.location,floor:pending.floor,expiry:pending.expiry,notes:pending.notes,qty:pending.qty,initialQty:pending.qty};
+    var it={id:uid(),pn:pending.pn||"---",alt_pn:pending.alt_pn,name:pending.name,subsys:pending.subsys,type:"",smr:"",sn:pending.sn,location:pending.location,floor:pending.floor,expiry:pending.expiry,notes:pending.notes,qty:pending.qty,initialQty:pending.qty};
     S.items.push(it);
     if(!S._newItems)S._newItems=[];S._newItems.push(it.id);
     saveAndPushItem(it);closeModal();renderAll();
@@ -2553,7 +2649,7 @@ function mergeIntoExisting(id, pending){
     var _rs={loc:newLoc||item.location||"",box:item.floor||"",exp:item.expiry||"",note:""};
     addNonSerialBatch(item,addQty,newLoc||item.location,item.floor,item.expiry,"",dDate,dInv);
   }
-  var tx={id:String(Date.now()),itemId:item.id,itemName:item.name,type:"receive",qty:addQty,date:dDate,person:S._fullName||"Manual add",purpose:"Added to existing P/N"+(newSn?" [S/N: "+newSn+"]":"")+(newLoc?" @ "+newLoc:""),reasonCode:"Restock",remaining:item.qty,sn:newSn||"",invoice:dInv,snap:(newSn?null:_rs),ts:Date.now()};
+  var tx={id:uid(),itemId:item.id,itemName:item.name,type:"receive",qty:addQty,date:dDate,person:S._fullName||"Manual add",purpose:"Added to existing P/N"+(newSn?" [S/N: "+newSn+"]":"")+(newLoc?" @ "+newLoc:""),reasonCode:"Restock",remaining:item.qty,sn:newSn||"",invoice:dInv,snap:(newSn?null:_rs),ts:Date.now()};
   S.tx.push(tx);
   saveAndPushItem(item);
   pushTx(tx);
@@ -2760,10 +2856,10 @@ function submitRMA(){
   var item=itemId?S.items.find(function(i){return i.id===itemId;}):null;
   var itemName=item?item.name:itemText;
   var itemPn=item?item.pn:((document.getElementById("rma-newpn")||{}).value||"---");
-  var newRec={id:String(Date.now()),rmaNum:"FAULT-"+String(Date.now()).slice(-6),itemId:itemId||"",itemName:itemName,itemPn:itemPn,sn:sn,fault:fault,status:"open",dateOpened:gv("rma-date")||tod(),dateReceived:gv("rma-date")||tod(),systemSn:gv("rma-systemsn"),location:gv("rma-location"),person:person,dateShipped:"",snReceived:"",notes:""};
+  var newRec={id:uid(),rmaNum:"FAULT-"+String(Date.now()).slice(-6),itemId:itemId||"",itemName:itemName,itemPn:itemPn,sn:sn,fault:fault,status:"open",dateOpened:gv("rma-date")||tod(),dateReceived:gv("rma-date")||tod(),systemSn:gv("rma-systemsn"),location:gv("rma-location"),person:person,dateShipped:"",snReceived:"",notes:""};
   S.rma.push(newRec);
   // Log in transaction log
-  S.tx.push({id:String(Date.now()+1),itemId:itemId||"",itemName:itemName,
+  S.tx.push({id:uid(),itemId:itemId||"",itemName:itemName,
     type:"faulty",qty:1,date:gv("rma-date")||tod(),person:person,
     purpose:"Faulty: "+fault,reasonCode:"Faulty",remaining:0,ts:Date.now()});
   save();
@@ -2976,7 +3072,7 @@ function executeBulkImport(){
       return rQty;
     };
     var buildNew=function(locVal){
-      var ni={id:String(Date.now()+i*7+Math.floor(Math.random()*997)),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:"",location:locVal,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:rQty,initialQty:rQty};
+      var ni={id:uid(),pn:r.row.pn||"---",alt_pn:r.row.alt_pn,name:r.row.name,subsys:r.row.subsys,type:"",smr:"",sn:"",location:locVal,floor:r.row.floor||"",expiry:r.row.expiry,notes:r.row.notes,qty:rQty,initialQty:rQty};
       if(eSn){ni.serials=[];mergeSerialIntoItem(ni,eSn,eLoc||locVal,eBox,eExp,eNote,rQty);}
       stampShipMeta(ni,eSn,arrDate,arrInv);
       S.items.push(ni);if(!S._newItems)S._newItems=[];S._newItems.push(ni.id);ad++;
@@ -3010,7 +3106,7 @@ function executeBulkImport(){
     }
   });
   importedTx.forEach(function(t){
-    S.tx.push({id:String(Date.now()+(Math.random()*99999|0)),itemId:t.itemId,itemName:t.itemName,type:"receive",qty:t.addQty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import"+(arrInv?" (Inv "+arrInv+")":""),reasonCode:"Import",remaining:t.remaining,serial:t.serial||"",invoice:arrInv,snap:t.snap||null,ts:Date.now()});
+    S.tx.push({id:uid(),itemId:t.itemId,itemName:t.itemName,type:"receive",qty:t.addQty,date:arrDate,person:S._fullName||"Shipment Import",purpose:"Shipment import"+(arrInv?" (Inv "+arrInv+")":""),reasonCode:"Import",remaining:t.remaining,serial:t.serial||"",invoice:arrInv,snap:t.snap||null,ts:Date.now()});
   });
   save();_bulkMatches=[];if(syncStatus()){showSyncBadge("saving");pushToSheets();}
   showImportDone(ad,up,sk,_dupSkipped);
@@ -3231,7 +3327,7 @@ document.addEventListener("click", function(ev){
     if(snIn2&&snIn2!==rec4.sn)item4.sn=snIn2;
     saveAndPushItem(item4);
   }
-  var tx4={id:String(Date.now()),itemId:rec4.itemId||"",itemName:rec4.itemName,
+  var tx4={id:uid(),itemId:rec4.itemId||"",itemName:rec4.itemName,
     type:"receive",qty:1,date:dt2,person:S._fullName||"Repair",
     purpose:"Repair return - "+rec4.rmaNum,reasonCode:"Return",
     remaining:item4?item4.qty:0,ts:Date.now()};
@@ -3457,24 +3553,11 @@ if(checkSSO()){
 // Then pull live data from Google Sheets (if configured)
 if (syncStatus()) {
   document.getElementById("sync-badge").style.display = "inline";
-  showSyncBadge("loading");
-  // Fast startup sync - no cold-start delay
-  showSyncBadge("loading");
-  fetch(SCRIPT_URL+"?action=getAll",{method:"GET",cache:"no-store"})
-    .then(function(r){return r.json();})
-    .then(function(d){
-      if(d.items&&d.items.length){
-        S.items=d.items; S.tx=d.tx||[];
-        if(migrateLegacyReturns())setTimeout(function(){if(syncStatus())pushToSheets();},500);
-        S.rma=(d.rma&&d.rma.length)?d.rma:(S.rma||[]);
-        if(d.users&&d.users.length)S.users=d.users;
-        showSyncBadge("ok"); save(); renderAll();
-      } else { showSyncBadge("ok"); }
-      startAutoSync();
-    }).catch(function(){
-      showSyncBadge("err");
-      startAutoSync();
-    });
+  loadOutbox();
+  rebuildBase(); // local copy = sheet + this device's queued changes
+  if (S._outbox.length) { S._needRefresh = true; showSyncBadge(); flushOutbox(); } // send unsaved changes first, then refresh
+  else refreshFromServer(true);
+  startAutoSync();
 }
 
 var MM_URL = "https://tomersudman.github.io/UAS_Maintenance_Manager/";
@@ -3524,9 +3607,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-STOCKFIX-4 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD STOCKFIX-4 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 STOCKFIX-4";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SAFESYNC-3 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SAFESYNC-3 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SAFESYNC-3";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
