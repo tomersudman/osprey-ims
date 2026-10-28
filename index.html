@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SAFESYNC-3</title>
+<title>OSPREY IMS v-SAFESYNC-3-SHIP1</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -381,6 +381,7 @@ function normalizeSheetItems(items){
     });
     if(typeof it.lots==="string"&&it.lots.trim()){try{it.lots=JSON.parse(it.lots);}catch(e){delete it.lots;}}
     if(!Array.isArray(it.lots))delete it.lots;
+    normalizeItemDates(it);
     reconcileItem(it);
   });
   return items;
@@ -522,7 +523,7 @@ function applyOpLocally(op){
 function acceptServer(d){
   normalizeSheetItems(d.items||[]);
   var pend={};S._outbox.forEach(function(o){o.items.forEach(function(i){pend[String(i.id)]=1;});o.itemDel.forEach(function(id){pend[String(id)]=1;});});
-  S.items=d.items||[];S.tx=d.tx||[];
+  S.items=d.items||[];S.tx=normalizeSheetTx(d.tx||[]);
   if(Array.isArray(d.rma))S.rma=d.rma;
   if(d.users&&d.users.length)S.users=d.users;
   if(!Array.isArray(S.rma))S.rma=[];
@@ -738,6 +739,137 @@ function stampShipMeta(item,sn,date,inv){
 // raw per-serial meta (no item-level fallback) - used for shipment filtering
 function rawSerialShip(item,sn){if(!item.serialShipDate)return "";var k=String(sn).trim();return (item.serialShipDate[sn]!=null?item.serialShipDate[sn]:(item.serialShipDate[k]!=null?item.serialShipDate[k]:""));}
 function rawSerialInv(item,sn){if(!item.serialInvoice)return "";var k=String(sn).trim();return (item.serialInvoice[sn]!=null?item.serialInvoice[sn]:(item.serialInvoice[k]!=null?item.serialInvoice[k]:""));}
+// ── DATES & SHIPMENTS ────────────────────────────────────────────────────────
+// Any date the sheet or old data hands us becomes a plain "yyyy-mm-dd" day.
+var _MONS={Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12"};
+function normDate(v){
+  if(v==null)return "";
+  var s=String(v).trim(); if(!s||s==="---")return "";
+  var m;
+  if((m=s.match(/^(\d{4})-(\d{2})-(\d{2})T/))&&/(Z|[+-]\d{2}:?\d{2})$/.test(s)){var d=new Date(s);if(!isNaN(d.getTime()))return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);}
+  if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))return m[1]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[3]).slice(-2);
+  if((m=s.match(/^[A-Z][a-z]{2},? ([A-Z][a-z]{2}) (\d{1,2}),? (\d{4})/))&&_MONS[m[1]])return m[3]+"-"+_MONS[m[1]]+"-"+("0"+m[2]).slice(-2); // "Fri Sep 04 2026 00:00:00 GMT+0700"
+  if((m=s.match(/^(\d{1,2}) ([A-Z][a-z]{2}) (\d{4})$/))&&_MONS[m[2]])return m[3]+"-"+_MONS[m[2]]+"-"+("0"+m[1]).slice(-2); // "04 Sep 2026"
+  return s;
+}
+function _normMapDates(o){if(o&&typeof o==="object")Object.keys(o).forEach(function(k){o[k]=normDate(o[k]);});}
+function normalizeItemDates(it){
+  if(it.shipDate!=null&&it.shipDate!=="")it.shipDate=normDate(it.shipDate);
+  if(it.expiry!=null&&it.expiry!=="")it.expiry=normDate(it.expiry);
+  _normMapDates(it.serialShipDate);_normMapDates(it.serialExpiry);
+  if(Array.isArray(it.lots))it.lots.forEach(function(L){if(L.shipDate)L.shipDate=normDate(L.shipDate);if(L.expiry)L.expiry=normDate(L.expiry);});
+}
+function normalizeSheetTx(list){
+  (list||[]).forEach(function(t){
+    if(t.date)t.date=normDate(t.date); if(t.returnedOn)t.returnedOn=normDate(t.returnedOn);
+    if(t.snap&&typeof t.snap==="object"){if(t.snap.shipDate)t.snap.shipDate=normDate(t.snap.shipDate);if(t.snap.exp)t.snap.exp=normDate(t.snap.exp);}
+  });
+  return list;
+}
+function _isShipRcv(t){return t&&t.type==="receive"&&!isReturnTx(t);}
+// One shipment = one arrival date. Lines come from the receipt transactions (the record of what
+// actually arrived), plus serials / batches / items that carry a date but have no receipt on record.
+function buildShipments(){
+  var byId={};S.items.forEach(function(it){if(!byId[it.id])byId[it.id]=it;});
+  var sh={};
+  var get=function(d){return sh[d]||(sh[d]={date:d,pls:{},lines:[],units:0,noPl:0});};
+  var add=function(d,line){var s=get(d);s.lines.push(line);s.units+=(parseInt(line.qty)||0);var pl=String(line.pl||"").trim();if(pl)s.pls[pl]=(s.pls[pl]||0)+1;else s.noPl++;};
+  var snSeen={},itemDay={},itemAny={};
+  S.tx.forEach(function(t){
+    if(!_isShipRcv(t))return;var it=byId[t.itemId];if(!it)return;
+    var d=normDate(t.date);if(!d)return;
+    var sn=String(t.serial||t.sn||"").trim();
+    if(sn){var k=it.id+"|"+sn;if(snSeen[k])return;snSeen[k]=1;}
+    itemDay[it.id+"|"+d]=1;itemAny[it.id]=1;
+    add(d,{item:it,tx:t,sn:sn,qty:sn?1:(parseInt(t.qty)||0),pl:t.invoice||""});
+  });
+  S.items.forEach(function(it){
+    var sers=itemSerials(it);
+    if(sers.length){sers.forEach(function(sn){var k=it.id+"|"+String(sn).trim();if(snSeen[k])return;var d=normDate(rawSerialShip(it,sn));if(!d)return;snSeen[k]=1;add(d,{item:it,sn:String(sn).trim(),qty:1,pl:rawSerialInv(it,sn)});});}
+    else if(Array.isArray(it.lots)&&it.lots.length){it.lots.forEach(function(L){var d=normDate(L.shipDate);if(!d||itemDay[it.id+"|"+d])return;add(d,{item:it,lot:L,qty:parseInt(L.qty)||0,pl:L.invoice||""});});}
+    else{var d=normDate(it.shipDate);if(d&&!itemDay[it.id+"|"+d]&&!itemAny[it.id])add(d,{item:it,qty:parseInt(it.qty)||0,pl:it.invoice||""});}
+  });
+  return sh;
+}
+function plTxt(p){p=String(p||"");return /^\s*pl/i.test(p)?p:"PL "+p;}
+function shipPLs(s){return Object.keys(s.pls).sort(function(a,b){return s.pls[b]-s.pls[a];});}
+function shipLabel(s){var p=shipPLs(s);return fd(s.date)+"  ·  "+(p.length?p.map(plTxt).join(" + ")+(p.length>1?"  \u26A0":""):"no PL")+"  ·  "+s.lines.length+" line"+(s.lines.length===1?"":"s");}
+// Change PL and/or date for everything in one shipment (moving it onto another date merges the two)
+function applyShipmentEdit(oldDate,newPL,newDate){
+  var s=buildShipments()[oldDate];if(!s)return 0;
+  newDate=normDate(newDate)||oldDate;
+  var setSerial=function(it,sn){var k=String(sn).trim();if(!it.serialShipDate)it.serialShipDate={};it.serialShipDate[k]=newDate;if(!it.serialInvoice)it.serialInvoice={};if(newPL)it.serialInvoice[k]=newPL;else delete it.serialInvoice[k];};
+  var touched={};
+  s.lines.forEach(function(l){
+    var it=l.item;touched[it.id]=it;
+    if(l.tx){l.tx.invoice=newPL;l.tx.date=newDate;}
+    if(l.sn){setSerial(it,l.sn);}
+    else if(l.lot){l.lot.invoice=newPL;l.lot.shipDate=newDate;}
+    else if(!l.tx){it.invoice=newPL;it.shipDate=newDate;}
+  });
+  // keep the item's own batch / item-level dates in step with the receipts that moved
+  Object.keys(touched).forEach(function(id){var it=touched[id];
+    if(Array.isArray(it.lots))it.lots.forEach(function(L){if(normDate(L.shipDate)===oldDate){L.shipDate=newDate;L.invoice=newPL;}});
+    if(normDate(it.shipDate)===oldDate){it.shipDate=newDate;it.invoice=newPL;}
+  });
+  return s.lines.length;
+}
+function buildEditShipmentModal(date){
+  date=date||S.fShipDate;var s=buildShipments()[date];if(!s)return "";
+  var p=shipPLs(s);
+  S._editShipDate=date;
+  return '<div class="mh"><div class="mt">Edit shipment — '+esc(fd(date))+'</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb">'+
+    '<div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Applies to all <b style="color:var(--tx)">'+s.lines.length+'</b> line(s) / <b style="color:var(--tx)">'+s.units+'</b> unit(s) that arrived on this date.</div>'+
+    (p.length>1?'<div style="background:var(--abg);border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">⚠ This shipment has '+p.length+' different PL numbers ('+p.map(esc).join(", ")+'). Saving sets one PL for all of it.</div>':'')+
+    (s.noPl&&p.length?'<div style="font-size:12px;color:var(--amber);margin-bottom:12px">'+s.noPl+' line(s) have no PL yet — they get this PL too.</div>':'')+
+    '<div class="fg">'+
+    '<div><label class="fl">PL number</label><input id="es-pl" type="text" value="'+esc(p[0]||"")+'" placeholder="packing list # (blank = no PL)" style="width:100%"></div>'+
+    '<div><label class="fl">Shipment date</label><input id="es-date" type="date" value="'+esc(date)+'" style="width:100%" oninput="esDateHint()"></div>'+
+    '</div><div id="es-hint" style="font-size:12px;color:var(--amber);margin-top:8px"></div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn bp" id="btn-es-save">Save shipment</button></div>';
+}
+function esDateHint(){var el=document.getElementById("es-hint");if(!el)return;var nd=(document.getElementById("es-date")||{}).value||"";
+  var t=buildShipments()[nd];el.innerHTML=(nd&&nd!==S._editShipDate&&t)?'⚠ There is already a shipment on '+esc(fd(nd))+' ('+t.lines.length+' lines'+(shipPLs(t).length?', '+shipPLs(t).map(function(x){return esc(plTxt(x));}).join(" + "):'')+'). Saving will <b>merge</b> this shipment into it.':'';}
+function submitEditShipment(){
+  var newPL=((document.getElementById("es-pl")||{}).value||"").trim();
+  var newDate=((document.getElementById("es-date")||{}).value||"").trim()||S._editShipDate;
+  var target=buildShipments()[newDate];
+  if(newDate!==S._editShipDate&&target&&!confirm("Merge this shipment into the one on "+fd(newDate)+"?\n\nEverything will be one shipment with PL "+(newPL||"(none)")+"."))return;
+  applyShipmentEdit(S._editShipDate,newPL,newDate);
+  if(target&&newDate!==S._editShipDate)applyShipmentEdit(newDate,newPL,newDate); // whole merged shipment gets one PL
+  S.fShipDate=newDate;S.fInvoice="";S.fNoInvoice=false;
+  save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}
+  var _back=S.modal&&S.modal.back==="shiplist";
+  closeModal();
+  if(_back){S.modal={type:"shiplist"};showModal(buildShipmentsModal());}
+  renderPage();
+}
+function buildShipmentsModal(){
+  var sh=buildShipments(),ds=Object.keys(sh).sort(function(a,b){return a<b?1:a>b?-1:0;});
+  var multi=ds.filter(function(d){return shipPLs(sh[d]).length>1;}).length, nopl=ds.filter(function(d){return !shipPLs(sh[d]).length;}).length;
+  var th='padding:7px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;font-weight:600';
+  var rows=ds.map(function(d){var s=sh[d],p=shipPLs(s);
+    var flag=p.length>1?'<span style="color:var(--amber)">⚠ '+p.length+' PLs</span>':(!p.length?'<span style="color:var(--amber)">no PL</span>':(s.noPl?'<span style="color:var(--amber)">'+s.noPl+' line(s) without PL</span>':'<span style="color:var(--green)">✓</span>'));
+    return '<tr style="border-top:1px solid var(--bd)"><td style="padding:7px 8px;white-space:nowrap;font-weight:600">'+esc(fd(d))+'</td><td style="padding:7px 8px">'+(p.length?p.map(esc).join("<br>"):'<span style="color:var(--tx3)">---</span>')+'</td><td style="padding:7px 8px;text-align:center">'+s.lines.length+'</td><td style="padding:7px 8px;text-align:center">'+s.units+'</td><td style="padding:7px 8px;font-size:12px">'+flag+'</td>'+
+      '<td style="padding:7px 8px;white-space:nowrap;text-align:right"><button class="btn sm" data-action="ship-view" data-date="'+esc(d)+'">View</button>'+(canEdit()?' <button class="btn sm" data-action="ship-edit" data-date="'+esc(d)+'" style="border-color:var(--green);color:var(--green)">Edit</button>':'')+'</td></tr>';}).join("");
+  return '<div class="mh" data-wide="1"><div class="mt">Shipments ('+ds.length+')</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">One shipment = one arrival date. '+((multi||nopl)?'<span style="color:var(--amber)">'+(multi?multi+' date(s) have more than one PL. ':'')+(nopl?nopl+' date(s) have no PL. ':'')+'Use <b>Edit</b> to set one PL per date, or change a date to merge two shipments.</span>':'<span style="color:var(--green)">All shipments have one PL.</span>')+'</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:60vh;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--bg3);position:sticky;top:0"><th style="'+th+'">Date</th><th style="'+th+'">PL</th><th style="'+th+';text-align:center">Lines</th><th style="'+th+';text-align:center">Units</th><th style="'+th+'">Check</th><th style="'+th+'"></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">No shipments yet.</td></tr>')+'</tbody></table></div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Close</button></div>';
+}
+// Import screen: tell the user when the chosen date already has a shipment
+function bulkShipHint(){
+  var el=document.getElementById("bulk-ship-hint");if(!el)return;
+  var d=(document.getElementById("bulk-arrival-date")||{}).value||"";var pl=((document.getElementById("bulk-invoice")||{}).value||"").trim();
+  var s=d?buildShipments()[d]:null;
+  if(!s){el.innerHTML=d?'<span style="color:var(--tx3)">New shipment for '+esc(fd(d))+'.</span>':'';return;}
+  var p=shipPLs(s);
+  var base='This date already has a shipment ('+s.lines.length+' lines'+(p.length?', '+p.map(function(x){return esc(plTxt(x));}).join(" + "):', no PL')+') — these items will be <b>added to it</b>.';
+  if(p.length===1&&!pl)el.innerHTML='<span style="color:var(--green)">'+base+' PL '+esc(p[0])+' will be used.</span>';
+  else if(p.length&&pl&&p.indexOf(pl)<0)el.innerHTML='<span style="color:var(--amber)">⚠ '+base+' It uses PL '+p.map(esc).join(" + ")+', not '+esc(pl)+'. <button class="btn sm" data-action="bulk-use-pl" data-pl="'+esc(p[0])+'">Use PL '+esc(p[0])+'</button> or pick another date if this really is a different shipment.</span>';
+  else el.innerHTML='<span style="color:var(--green)">'+base+'</span>';
+}
 // Representative location/box shown for an item (derives from its serials when serialized & non-split)
 function itemDisplayLoc(item){var s=itemSerials(item);if(s.length){var l=serialLoc(item,s[0]);if(s.every(function(sn){return serialLoc(item,sn)===l;})&&l&&l!=="Unknown")return l;}return item.location||"";}
 function itemDisplayBox(item){var s=itemSerials(item);if(s.length){var b=serialBox(item,s[0]);if(s.every(function(sn){return serialBox(item,sn)===b;})&&b)return b;}return item.floor||"";}
@@ -1682,82 +1814,16 @@ function detailHTML(item){
 }
 
 // ── INVENTORY PAGE ────────────────────────────────────────────────────────────
-function _shipMatcher(){
-  var invQ=(S.fInvoice||"").trim().toLowerCase();var oldDate=S.fShipDate||"";var noInv=S.fNoInvoice;
-  return function(d,inv){var okD=!oldDate||(d===oldDate);var okI;if(noInv)okI=!inv||String(inv).trim()==="";else okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);return okD&&okI;};
-}
-function _countShipment(match){
-  var n=0;
-  S.items.forEach(function(item){
-    var sers=itemSerials(item);
-    if(sers.length){sers.forEach(function(sn){if(match(rawSerialShip(item,sn),rawSerialInv(item,sn)))n++;});}
-    else if(Array.isArray(item.lots)&&item.lots.length){item.lots.forEach(function(L){if(match(L.shipDate||"",L.invoice||""))n++;});}
-    else{if(match(item.shipDate||"",item.invoice||""))n++;}
-  });
-  return n;
-}
-function buildEditShipmentModal(){
-  var curPL=S.fNoInvoice?"":(S.fInvoice||"");
-  var curDate=S.fShipDate||"";
-  var n=_countShipment(_shipMatcher());
-  return '<div class="mh"><div class="mt">Edit shipment</div><button class="mc" id="modal-close-btn">x</button></div>'+
-    '<div class="mb">'+
-    '<div style="font-size:12px;color:var(--tx2);margin-bottom:14px">Change the PL (packing list) number or the date for this shipment. The change applies to <b style="color:var(--tx)">'+n+'</b> line(s) \u2014 every serial, batch and transaction currently in this shipment.</div>'+
-    '<div class="fg">'+
-    '<div><label class="fl">PL number</label><input id="es-pl" type="text" value="'+esc(curPL)+'" placeholder="packing list # (blank = no PL)" style="width:100%"></div>'+
-    '<div><label class="fl">Shipment date</label><input id="es-date" type="date" value="'+esc(curDate)+'" style="width:100%"></div>'+
-    '</div></div>'+
-    '<div class="mf"><button class="btn" id="modal-close-btn2">Cancel</button><button class="btn bp" id="btn-es-save">Save shipment</button></div>';
-}
-function submitEditShipment(){
-  var newPL=((document.getElementById("es-pl")||{}).value||"").trim();
-  var newDate=((document.getElementById("es-date")||{}).value||"").trim();
-  var match=_shipMatcher();
-  var n=0;
-  S.items.forEach(function(item){
-    var sers=itemSerials(item);
-    if(sers.length){
-      sers.forEach(function(sn){
-        if(match(rawSerialShip(item,sn),rawSerialInv(item,sn))){
-          var k=String(sn).trim();
-          if(!item.serialInvoice)item.serialInvoice={}; if(newPL)item.serialInvoice[k]=newPL; else delete item.serialInvoice[k];
-          if(newDate){if(!item.serialShipDate)item.serialShipDate={};item.serialShipDate[k]=newDate;}
-          markDirty(item.id); n++;
-        }
-      });
-    } else if(Array.isArray(item.lots)&&item.lots.length){
-      item.lots.forEach(function(L){if(match(L.shipDate||"",L.invoice||"")){L.invoice=newPL; if(newDate)L.shipDate=newDate; markDirty(item.id); n++;}});
-    } else {
-      if(match(item.shipDate||"",item.invoice||"")){item.invoice=newPL; if(newDate)item.shipDate=newDate; markDirty(item.id); n++;}
-    }
-  });
-  S.tx.forEach(function(t){if(t.type==="receive"&&!isReturnTx(t)&&match(t.date||"",t.invoice||"")){t.invoice=newPL; if(newDate)t.date=newDate;}});
-  if(newPL){S.fNoInvoice=false;S.fInvoice=newPL;} else {S.fNoInvoice=true;S.fInvoice="";}
-  if(newDate)S.fShipDate=newDate;
-  save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}
-  closeModal();renderPage();
-}
 function renderInventory(){
   var items=filt();
-  var shipFilter=!!(S.fShipDate||(S.fInvoice&&S.fInvoice.trim())||S.fNoInvoice);
+  var _ships=buildShipments();
+  if(S.fShipDate)S.fShipDate=normDate(S.fShipDate);
+  var shipFilter=!!S.fShipDate;
   var shipCount=0;
-  var invMap={}, noInvDates={};
-  S.items.forEach(function(it){
-    var sers=itemSerials(it);
-    if(sers.length){
-      sers.forEach(function(sn){var iv=rawSerialInv(it,sn);var d=rawSerialShip(it,sn);if(iv){if(invMap[iv]==null)invMap[iv]=d||"";}else if(d){noInvDates[d]=1;}});
-    } else if(Array.isArray(it.lots)&&it.lots.length){
-      it.lots.forEach(function(L){if(L.invoice){if(invMap[L.invoice]==null)invMap[L.invoice]=L.shipDate||"";}else if(L.shipDate){noInvDates[L.shipDate]=1;}});
-    } else {
-      if(it.invoice){if(invMap[it.invoice]==null)invMap[it.invoice]=it.shipDate||"";}else if(it.shipDate){noInvDates[it.shipDate]=1;}
-    }
-  });
-  S.tx.forEach(function(t){if(t.type==="receive"&&!isReturnTx(t)){if(t.invoice){if(invMap[t.invoice]==null)invMap[t.invoice]=t.date||"";}else if(t.date){noInvDates[t.date]=1;}}});
-  var invList=Object.keys(invMap).sort(function(a,b){var da=invMap[a]||"",db=invMap[b]||"";return da<db?1:da>db?-1:0;});
-  var noInvList=Object.keys(noInvDates).sort(function(a,b){return a<b?1:a>b?-1:0;});
+  var _sd=Object.keys(_ships).sort(function(a,b){return a<b?1:a>b?-1:0;});
   var invOpts='<option value="">All shipments</option>';
-  invList.forEach(function(iv){invOpts+='<option value="'+esc(iv)+'"'+((!S.fNoInvoice&&S.fInvoice===iv)?" selected":"")+'>'+esc(iv)+(invMap[iv]?"  \u00b7  "+esc(fdate(invMap[iv])):"")+'</option>';});
-  noInvList.forEach(function(d){invOpts+='<option value="__noinv__'+esc(d)+'"'+((S.fNoInvoice&&S.fShipDate===d)?" selected":"")+'>No PL  \u00b7  '+esc(fdate(d))+'</option>';});
+  if(S.fShipDate&&!_ships[S.fShipDate])invOpts+='<option value="'+esc(S.fShipDate)+'" selected>'+esc(fd(S.fShipDate))+'  \u00b7  nothing arrived</option>';
+  _sd.forEach(function(d){invOpts+='<option value="'+esc(d)+'"'+(S.fShipDate===d?" selected":"")+'>'+esc(shipLabel(_ships[d]))+'</option>';});
   var locs=uniq("location"),subs=uniq("subsys");
   var locO='<option value="">All locations</option>';
   locs.forEach(function(l){locO+='<option value="'+esc(l)+'"'+(S.fLoc===l?" selected":"")+'>'+esc(l)+'</option>';});
@@ -1798,55 +1864,27 @@ function renderInventory(){
       +'</div>';
   });}
   if(shipFilter){
-    var invQ=(S.fInvoice||"").trim().toLowerCase();
-    var entries=[];var seen={};
-    var matchMeta=function(d,inv){
-      var okD=!S.fShipDate||(d===S.fShipDate);
-      var okI;
-      if(S.fNoInvoice){okI=!inv||String(inv).trim()==="";}
-      else{okI=!invQ||(inv&&String(inv).trim().toLowerCase()===invQ);}
-      return okD&&okI;
-    };
-    S.items.forEach(function(item){
-      var sers=itemSerials(item);
-      if(sers.length){
-        sers.forEach(function(sn){
-          if(matchMeta(rawSerialShip(item,sn),rawSerialInv(item,sn))){
-            var k=item.id+"|"+sn;if(seen[k])return;seen[k]=1;
-            entries.push({item:item,sn:sn});
-          }
-        });
-      } else {
-        var lots=itemLots(item);
-        if(lots.length){
-          lots.forEach(function(L,li){
-            if(matchMeta(L.shipDate||"",L.invoice||"")){
-              var kl=item.id+"|lot"+li;if(seen[kl])return;seen[kl]=1;
-              entries.push({item:item,sn:null,lot:L});
-            }
-          });
-        } else {
-          var tdate=item.shipDate||"",tinv=item.invoice||"";
-          var hit=matchMeta(tdate,tinv);
-          if(!hit){hit=S.tx.some(function(t){return t.itemId===item.id&&t.type==="receive"&&!isReturnTx(t)&&matchMeta(t.date||"",t.invoice||"");});}
-          if(hit){var k2=item.id+"|";if(!seen[k2]){seen[k2]=1;entries.push({item:item,sn:null,lot:null});}}
-        }
-      }
-    });
+    var _cur=_ships[S.fShipDate];
+    var entries=_cur?_cur.lines.slice():[];
+    var _q=S.search.trim().toLowerCase();
+    if(_q)entries=entries.filter(function(l){return [l.item.name,l.item.pn,l.item.alt_pn||"",l.sn||""].some(function(v){return String(v).toLowerCase().indexOf(_q)>=0;});});
+    entries.sort(function(a,b){var x=(a.item.name||"").toLowerCase(),y=(b.item.name||"").toLowerCase();return x<y?-1:x>y?1:String(a.sn||"")<String(b.sn||"")?-1:1;});
     shipCount=entries.length;
     rows="";cards="";
     if(!entries.length){rows='<tr><td colspan="11" class="empty">No items match this shipment filter.</td></tr>';cards='<div class="empty">No items match this shipment filter.</div>';}
     else entries.forEach(function(e){
       var item=e.item,sn=e.sn;
       var nm=hl(item.name);
-      var meta;
-      if(sn){meta={loc:serialLoc(item,sn),box:serialBox(item,sn),exp:serialExpiry(item,sn),note:serialNote(item,sn),date:rawSerialShip(item,sn),inv:rawSerialInv(item,sn),qty:1,sncell:esc(sn)};}
-      else if(e.lot){var L=e.lot;meta={loc:L.location||"",box:L.box||"",exp:L.expiry||"",note:L.note||"",date:L.shipDate||"",inv:L.invoice||"",qty:parseInt(L.qty)||0,sncell:"---"};}
-      else{meta={loc:item.location||"",box:item.floor||"",exp:item.expiry||"",note:item.notes||"",date:item.shipDate||"",inv:item.invoice||"",qty:item.qty,sncell:"---"};}
+      var meta,_gone=false;
+      if(sn){_gone=!hasSerial(item,sn);meta={loc:_gone?"":serialLoc(item,sn),box:_gone?"":serialBox(item,sn),exp:serialExpiry(item,sn),note:serialNote(item,sn),date:S.fShipDate,inv:e.pl,qty:1,sncell:esc(sn)};}
+      else if(e.lot){var L=e.lot;meta={loc:L.location||"",box:L.box||"",exp:L.expiry||"",note:L.note||"",date:S.fShipDate,inv:e.pl,qty:e.qty,sncell:"---"};}
+      else{var _sp=e.tx?txSnap(e.tx):{},_gi=e.tx?txGuessLot(e.tx,item):-1,_L=_gi>=0?itemLots(item)[_gi]:null;
+        meta=(_sp&&_sp.loc!=null)?{loc:_sp.loc||"",box:_sp.box||"",exp:_sp.exp||"",note:_sp.note||""}:_L?{loc:_L.location||"",box:_L.box||"",exp:_L.expiry||"",note:_L.note||""}:{loc:item.location||"",box:item.floor||"",exp:item.expiry||"",note:item.notes||""};
+        meta.date=S.fShipDate;meta.inv=e.pl;meta.qty=e.qty;meta.sncell="---";}
       var lc=meta.loc?'<span class="loctag">'+esc(meta.loc)+'</span>':'<span style="color:var(--tx3)">---</span>';
       var boxc=meta.box?'<span style="font-size:12px;color:var(--tx2);font-family:monospace">'+esc(meta.box)+'</span>':'<span style="color:var(--tx3)">---</span>';
       var expc=meta.exp?fdate(meta.exp):'<span style="color:var(--tx3)">---</span>';
-      var subline=(meta.inv||meta.date)?'<div style="font-size:10px;color:var(--tx3);margin-top:2px">'+(meta.inv?'Inv '+esc(meta.inv):'')+(meta.inv&&meta.date?' \u00b7 ':'')+(meta.date?esc(fdate(meta.date)):'')+'</div>':'';
+      var subline='<div style="font-size:10px;color:var(--tx3);margin-top:2px">'+(meta.inv?esc(plTxt(meta.inv)):'<span style="color:var(--amber)">no PL</span>')+' \u00b7 received '+meta.qty+(_gone?' \u00b7 <span style="color:var(--red)">drawn / not in stock</span>':'')+'</div>';
       rows+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'">'
         +'<td style="max-width:220px;font-weight:500">'+nm+subline+'</td>'
         +'<td><span class="pn">'+hl(item.pn)+'</span></td>'
@@ -1860,7 +1898,7 @@ function renderInventory(){
         +'<td class="hide-sm" style="font-size:11px;color:var(--tx2);max-width:180px">'+(meta.note?esc(meta.note):'<span style=\'color:var(--tx3)\'>---</span>')+'</td>'
         +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
       var stkColor=meta.qty===0?'var(--red)':meta.qty<=2?'var(--amber)':'var(--green)';
-      cards+='<div class="mrow" data-action="detail" data-id="'+esc(item.id)+'"><div class="mrow-main"><div class="mrow-name">'+nm+'</div><div class="mrow-sub">'+hl(item.pn)+(meta.sncell!=="---"?'<span class="mrow-dot">\u00b7</span>S/N '+meta.sncell:'')+(meta.loc?'<span class="mrow-dot">\u00b7</span>'+esc(meta.loc):'')+(meta.inv?'<span class="mrow-dot">\u00b7</span>Inv '+esc(meta.inv):'')+'</div></div><div class="mrow-stk" style="color:'+stkColor+'">'+meta.qty+'</div></div>';
+      cards+='<div class="mrow" data-action="detail" data-id="'+esc(item.id)+'"><div class="mrow-main"><div class="mrow-name">'+nm+'</div><div class="mrow-sub">'+hl(item.pn)+(meta.sncell!=="---"?'<span class="mrow-dot">\u00b7</span>S/N '+meta.sncell:'')+(meta.loc?'<span class="mrow-dot">\u00b7</span>'+esc(meta.loc):'')+(meta.inv?'<span class="mrow-dot">\u00b7</span>PL '+esc(meta.inv):'')+(_gone?'<span class="mrow-dot">\u00b7</span><span style="color:var(--red)">drawn</span>':'')+'</div></div><div class="mrow-stk" style="color:'+stkColor+'">'+meta.qty+'</div></div>';
     });
   }
   return'<div class="card"><div class="ch">'+
@@ -1872,7 +1910,8 @@ function renderInventory(){
     '<select id="fSub" style="width:105px">'+subO+'</select>'+
     '<select id="fExp" style="width:105px"><option value="">All expiry</option><option value="expiring"'+(S.fExp==="expiring"?" selected":"")+'>Expiring</option><option value="expired"'+(S.fExp==="expired"?" selected":"")+'>Expired</option></select>'+
     '<input id="fShipDate" type="date" value="'+esc(S.fShipDate||"")+'" title="Filter by shipment date" style="width:140px"'+(S.fShipDate?' class="bg"':'')+'>'+
-    '<select id="fInvoice" style="width:180px" title="Filter by PL / packing list">'+invOpts+'</select>'+
+    '<select id="fInvoice" style="width:230px" title="Filter by shipment (arrival date + PL)">'+invOpts+'</select>'+
+    '<button class="btn sm" id="btn-shipments" title="All shipments \u2014 check and fix PL numbers and dates">Shipments</button>'+
     (shipFilter?'<button class="btn sm" id="btn-clear-ship" style="border-color:var(--amber);color:var(--amber)">Clear shipment</button>':'')+
     ((shipFilter&&canEdit())?'<button class="btn sm" id="btn-edit-shipment" style="border-color:var(--green);color:var(--green)">Edit shipment</button>':'')+
     '<button class="btn bg sm" id="btn-xcsv">Excel</button>'+
@@ -1880,6 +1919,9 @@ function renderInventory(){
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
     
     '</div></div>'+
+    ((shipFilter&&_ships[S.fShipDate])?(function(){var s=_ships[S.fShipDate],p=shipPLs(s);
+      return '<div style="background:var(--bg3);border-bottom:1px solid var(--bd);padding:9px 18px;font-size:12px;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center"><span><b style="color:var(--tx)">Shipment '+esc(fd(s.date))+'</b></span><span>'+(p.length?'<b style="color:var(--tx)">'+p.map(function(x){return esc(plTxt(x));}).join(" + ")+'</b>':'<span style="color:var(--amber)">no PL</span>')+'</span><span>'+s.lines.length+' lines \u00b7 '+s.units+' units received</span>'+
+        (p.length>1?'<span style="color:var(--amber)">\u26A0 more than one PL on this date \u2014 use Edit shipment to set one</span>':(s.noPl&&p.length?'<span style="color:var(--amber)">\u26A0 '+s.noPl+' line(s) without PL \u2014 Edit shipment fixes it</span>':''))+'</div>';})():'')+
     (S._statFilter?'<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;justify-content:space-between"><span>Filtered: '+{low:"Low &amp; critical stock",zero:"Out of stock",exp:"Expiring / expired"}[S._statFilter]+' ('+items.length+' items)</span><button class="btn sm" id="btn-clearstatf" style="border-color:var(--amber);color:var(--amber)">Clear filter</button></div>':'')+
     '<div class="mcards-wrap">'+cards+'</div>'+
     '<div class="tw tw-table"><table><thead><tr>'+
@@ -2938,7 +2980,7 @@ function renderBulkImport(){
     return'<td style="padding:2px 3px;width:'+COLW[ci]+'px"><input type="'+itype+'" class="bulk-cell" data-row="'+i+'" data-col="'+ci+'"'+extra+' style="width:100%;height:26px;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:3px;padding:0 6px;font-size:12px"></td>';
   }).join('')+'</tr>';}
   return '<div class="card"><div class="ch"><div class="ctitle">Shipment Import</div><div style="display:flex;gap:8px"><button class="btn sm" id="btn-bulk-addrows">+ 20 rows</button><button class="btn bp" id="btn-bulk-import">Preview</button><button class="btn br sm" id="btn-bulk-clear">Clear</button></div></div>'
-    +'<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 6px;flex-wrap:wrap"><label style="font-size:12px;color:var(--tx2);font-weight:500">Shipment date:</label><input type="date" id="bulk-arrival-date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" style="width:140px"><label style="font-size:12px;color:var(--tx2);font-weight:500">PL #:</label><input type="text" id="bulk-invoice" placeholder="e.g. PL number" style="width:160px"><span style="font-size:12px;color:var(--tx3)">Recorded for all imported items (used for filtering).</span></div>'
+    +'<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 6px;flex-wrap:wrap"><label style="font-size:12px;color:var(--tx2);font-weight:500">Shipment date:</label><input type="date" id="bulk-arrival-date" value="'+tod()+'" onclick="try{this.showPicker();}catch(e){}" oninput="bulkShipHint()" onchange="bulkShipHint()" style="width:140px"><label style="font-size:12px;color:var(--tx2);font-weight:500">PL #:</label><input type="text" id="bulk-invoice" placeholder="e.g. PL number" oninput="bulkShipHint()" style="width:160px"><span style="font-size:12px;color:var(--tx3)">Same date = same shipment.</span></div><div id="bulk-ship-hint" style="padding:0 18px 6px;font-size:12px"></div>'
     +'<p style="padding:0 18px 6px;font-size:12px;color:var(--tx2)">Paste from Excel (Ctrl+V). Arrow keys, Tab, Enter to navigate. Drag to select.</p>'
     +'<div style="overflow-x:auto;padding:8px 16px"><table id="bulk-table" style="border-collapse:collapse"><thead>'+thead+'</thead><tbody id="bulk-tbody">'+tbody+'</tbody></table></div>'
     +'<div id="bulk-preview" style="padding:0 16px 16px"></div></div>';
@@ -2982,6 +3024,7 @@ function parseBulkPaste(){
   var nN=res.filter(function(r){return r.status==="new";}).length,nU=res.filter(function(r){return r.status==="exact";}).length,nC=res.filter(function(r){return r.status!=="new"&&r.status!=="exact";}).length;
   var pill=function(id,color,label){return '<button class="bulk-filter-pill" data-filter="'+id+'" style="cursor:pointer;border:1px solid '+color+';background:transparent;color:'+color+';border-radius:12px;font-size:12px;padding:3px 12px;margin-right:6px;font-weight:600">'+label+'</button>';};
   var _invVal=((document.getElementById("bulk-invoice")||{}).value||"").trim();
+  if(!_invVal){var _es0=buildShipments()[(document.getElementById("bulk-arrival-date")||{}).value||""];if(_es0&&shipPLs(_es0).length===1)_invVal=shipPLs(_es0)[0];}
   var _invWarn=_invVal?'':'<div style="background:var(--abg);border:1px solid var(--amber);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:var(--amber)">\u26A0 No PL number entered. You can still import \u2014 these items will be filed under \u201cNo PL\u201d for this shipment date, and you can assign a PL number to the whole shipment later from the Inventory filter.</div>';
   var html='<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:14px">'+_invWarn+'<div style="font-size:13px;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px"><b style="margin-right:8px">'+res.length+' rows:</b>'+pill("all","var(--tx2)","All ("+res.length+")")+pill("new","var(--green)",nN+" new")+pill("exact","var(--blue2)",nU+" update")+pill("review","var(--amber)",nC+" review")+'<span style="font-size:11px;color:var(--tx3);margin-left:6px">(click to filter)</span></div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg4)"><th style="padding:5px 8px">Include</th><th>Description</th><th>Part No.</th><th>Qty</th><th>Location</th><th>Status</th></tr></thead><tbody>';
@@ -3052,6 +3095,7 @@ function executeBulkImport(){
   var ad=0,up=0,sk=0;
   var arrDate=(document.getElementById("bulk-arrival-date")||{}).value||tod();
   var arrInv=((document.getElementById("bulk-invoice")||{}).value||"").trim();
+  if(!arrInv){var _es=buildShipments()[arrDate];if(_es&&shipPLs(_es).length===1)arrInv=shipPLs(_es)[0];} // same date = same shipment: reuse its PL
   var importedTx=[],_dupSkipped=[];
   _bulkMatches.forEach(function(r,i){
     if(r.match){var _fresh=S.items.find(function(x){return x.id===r.match.id;});if(_fresh)r.match=_fresh;}
@@ -3195,7 +3239,7 @@ function renderPage(){
   else if(S.tab==="reports") h=renderReports();
   else if(S.tab==="rma") h=renderRMA();
   else if(S.tab==="map") h=renderMap();
-  else if(S.tab==="bulk") h=renderBulkImport();
+  else if(S.tab==="bulk"){ h=renderBulkImport(); setTimeout(function(){try{bulkShipHint();}catch(e){}},0); }
   else if(S.tab==="users") h=renderUsers();
   document.getElementById("pg").innerHTML=pageHeader()+h;
   window.scrollTo(0,scrollY);
@@ -3253,7 +3297,8 @@ document.addEventListener("click", function(ev){
   // --- static button IDs in inventory toolbar ---
   if(t.id==="btn-clear"){S.search="";S.fLoc="";S.fSub="";S.fType="";S.fExp="";S.fShipDate="";S.fInvoice="";S.fNoInvoice=false;S._statFilter=null;renderPage();return;}
   if(t.id==="btn-clear-ship"){S.fShipDate="";S.fInvoice="";S.fNoInvoice=false;renderPage();return;}
-  if(t.id==="btn-edit-shipment"){if(!canEdit())return;S.modal={type:"editship"};showModal(buildEditShipmentModal());return;}
+  if(t.id==="btn-edit-shipment"){if(!canEdit())return;S.modal={type:"editship"};showModal(buildEditShipmentModal(S.fShipDate));return;}
+  if(t.id==="btn-shipments"){S.modal={type:"shiplist"};showModal(buildShipmentsModal());return;}
   if(t.id==="btn-es-save"){if(!canEdit())return;submitEditShipment();return;}
   if(t.id==="btn-rpt-apply"){S._rptFrom=gv("rpt-from");S._rptTo=gv("rpt-to");renderPage();return;}
   if(t.id==="btn-rpt-excel"){exportRptExcel();return;}
@@ -3451,6 +3496,9 @@ return;}
         if(_rc.length>1){var _rm=_rc[0].id;S.tx=S.tx.filter(function(t){return t.id!==_rm;});}}
       else{var _cur=itemSerials(_di);_cur.push(_ds);_di.serials=_cur;if(!_di.sn)_di.sn=_ds;reconcileItem(_di);}
       markDirty(_di.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_di));renderPage();return;}
+    if(a==="ship-view"){S.fShipDate=el.getAttribute("data-date");S.fInvoice="";S.fNoInvoice=false;S.tab="inventory";closeModal();renderAll();return;}
+    if(a==="ship-edit"){if(!canEdit())return;var _ed=el.getAttribute("data-date");closeModal();S.modal={type:"editship",back:"shiplist"};showModal(buildEditShipmentModal(_ed));return;}
+    if(a==="bulk-use-pl"){var _bi=document.getElementById("bulk-invoice");if(_bi)_bi.value=el.getAttribute("data-pl");bulkShipHint();return;}
     if(a==="fix-stock"){if(!canAdmin())return;var _fi=S.items.find(function(x){return x.id===id;});var _L=_fi?ledgerQty(_fi):null;if(_fi&&_L!==null){applyQtyDeltaToLots(_fi,_L-(parseInt(_fi.qty)||0));markDirty(_fi.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_fi));renderPage();}return;}
     return;
   }
@@ -3467,7 +3515,7 @@ document.addEventListener("change",function(ev){
   else if(id==="fType"){S.fType=ev.target.value;renderPage();}
   else if(id==="fExp"){S.fExp=ev.target.value;renderPage();}
   else if(id==="fShipDate"){S.fShipDate=ev.target.value;S.fNoInvoice=false;renderPage();}
-  else if(id==="fInvoice"){var _v=ev.target.value;if(_v.indexOf("__noinv__")===0){S.fInvoice="";S.fNoInvoice=true;S.fShipDate=_v.slice(9);}else{S.fInvoice=_v;S.fNoInvoice=false;}renderPage();}
+  else if(id==="fInvoice"){S.fShipDate=ev.target.value;S.fInvoice="";S.fNoInvoice=false;renderPage();}
 });
 
 document.addEventListener("input",function(ev){
@@ -3607,9 +3655,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SAFESYNC-3 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SAFESYNC-3 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SAFESYNC-3";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SAFESYNC-3-SHIP1 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SAFESYNC-3-SHIP1 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SAFESYNC-3-SHIP1";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
