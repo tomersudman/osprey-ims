@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP1-CLEANUP</title>
+<title>OSPREY IMS v-SHIP1-CLEANUP-SN</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -855,7 +855,7 @@ function buildShipmentsModal(){
       '<td style="padding:7px 8px;white-space:nowrap;text-align:right"><button class="btn sm" data-action="ship-view" data-date="'+esc(d)+'">View</button>'+(canEdit()?' <button class="btn sm" data-action="ship-edit" data-date="'+esc(d)+'" style="border-color:var(--green);color:var(--green)">Edit</button>':'')+'</td></tr>';}).join("");
   return '<div class="mh" data-wide="1"><div class="mt">Shipments ('+ds.length+')</div><button class="mc" id="modal-close-btn">x</button></div>'+
     '<div class="mb"><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">One shipment = one arrival date. '+((multi||nopl)?'<span style="color:var(--amber)">'+(multi?multi+' date(s) have more than one PL. ':'')+(nopl?nopl+' date(s) have no PL. ':'')+'Use <b>Edit</b> to set one PL per date, or change a date to merge two shipments.</span>':'<span style="color:var(--green)">All shipments have one PL.</span>')+'</div>'+
-    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:60vh;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--bg3);position:sticky;top:0"><th style="'+th+'">Date</th><th style="'+th+'">PL</th><th style="'+th+';text-align:center">Lines</th><th style="'+th+';text-align:center">Units</th><th style="'+th+'">Check</th><th style="'+th+'"></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">No shipments yet.</td></tr>')+'</tbody></table></div></div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:60vh;overflow:auto"><table style="width:100%;min-width:0;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--bg3);position:sticky;top:0"><th style="'+th+'">Date</th><th style="'+th+'">PL</th><th style="'+th+';text-align:center">Lines</th><th style="'+th+';text-align:center">Units</th><th style="'+th+'">Check</th><th style="'+th+'"></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">No shipments yet.</td></tr>')+'</tbody></table></div></div>'+
     '<div class="mf"><button class="btn" id="modal-close-btn2">Close</button></div>';
 }
 // Import screen: tell the user when the chosen date already has a shipment
@@ -926,6 +926,74 @@ function submitMoveLines(){
   S._moveMsg=n+" line"+(n===1?"":"s")+" moved to "+fd(d)+(pl?" · "+plTxt(pl):" · no PL");
   if(!buildShipments()[S.fShipDate])S.fShipDate=d; // the shipment is now empty: follow the lines
   renderPage();
+}
+// ── SEVERAL S/Ns TYPED IN ONE FIELD ("85-065, 85-067") ─────────────────────────
+// Split on comma / semicolon / new line; drop a leading "SN" / "S/N" label.
+function splitSnText(s){
+  var seen={},out=[];
+  String(s==null?"":s).split(/[,;\n]+/).forEach(function(p){
+    p=p.replace(/^\s*(s\s*\/\s*n|sn|serial(\s*no\.?)?)\s*[:#.\-]?\s*/i,"").trim();
+    if(p&&!seen[p]){seen[p]=1;out.push(p);}
+  });
+  return out;
+}
+// Items whose serial field(s) hold more than one serial number
+function multiSnItems(){
+  var res=[];
+  S.items.forEach(function(it){
+    var cur=itemSerials(it),parts=[];cur.forEach(function(o){splitSnText(o).forEach(function(p){if(parts.indexOf(p)<0)parts.push(p);});});
+    if(parts.length>cur.length)res.push({item:it,from:cur.join(" | "),parts:parts,qty:parseInt(it.qty)||0,ok:parts.length===(parseInt(it.qty)||0)});
+  });
+  return res;
+}
+function applySnSplit(it){
+  var cur=itemSerials(it),all=[],byOld={};
+  cur.forEach(function(o){var ps=splitSnText(o);if(!ps.length)ps=[String(o).trim()];byOld[o]=ps;ps.forEach(function(p){if(all.indexOf(p)<0)all.push(p);});});
+  if(all.length<=cur.length)return false;
+  // per-serial details stored under the combined text go to each part
+  ["serialLocations","serialBoxes","serialExpiry","serialNotes","serialShipDate","serialInvoice"].forEach(function(k){
+    var m=it[k];if(!m||typeof m!=="object")return;
+    cur.forEach(function(o){var ps=byOld[o];if(ps.length<2)return;var key=m[o]!=null?o:(m[String(o).trim()]!=null?String(o).trim():null);if(key==null)return;var v=m[key];delete m[key];ps.forEach(function(p){if(m[p]==null)m[p]=v;});});
+  });
+  // shipment date / PL recorded on the item itself carry over to each serial
+  all.forEach(function(p){if(it.shipDate&&!rawSerialShip(it,p)){if(!it.serialShipDate)it.serialShipDate={};it.serialShipDate[p]=it.shipDate;}
+    if(it.invoice&&!rawSerialInv(it,p)){if(!it.serialInvoice)it.serialInvoice={};it.serialInvoice[p]=it.invoice;}});
+  it.serials=all;it.sn=all[0]||"";
+  // transactions that name the combined text: one transaction per serial (same totals)
+  var add=[];
+  S.tx.forEach(function(t){
+    if(t.itemId!==it.id)return;var o=String(t.serial||t.sn||"").trim();if(!o)return;
+    var ps=splitSnText(o);if(ps.length<2||ps.length!==(parseInt(t.qty)||0))return;
+    ps.forEach(function(p,k){
+      if(k===0){t.qty=1;if(t.serial!=null&&t.serial!=="")t.serial=p;if(t.sn!=null&&t.sn!=="")t.sn=p;if(!t.serial&&!t.sn)t.serial=p;return;}
+      var c=JSON.parse(JSON.stringify(t));c.id=uid();c.qty=1;c.serial=p;if(c.sn)c.sn=p;c.ts=(parseInt(t.ts)||0)+k;add.push(c);
+    });
+  });
+  add.forEach(function(c){S.tx.push(c);});
+  reconcileItem(it);
+  return true;
+}
+function buildSnSplitModal(){
+  var L=multiSnItems();
+  var rows=L.map(function(x,i){
+    return '<tr style="border-top:1px solid var(--bd)"><td style="padding:7px 8px;vertical-align:top"><input type="checkbox" class="snsplit-cb" data-i="'+i+'"'+(x.ok?' checked':' disabled')+' style="width:16px;height:16px"></td>'+
+      '<td style="padding:7px 8px;vertical-align:top;font-weight:600;word-break:break-word">'+esc(x.item.name)+'<div style="font-size:11px;color:var(--tx3);font-weight:400">'+esc(x.item.pn)+' \u00b7 now: <span style="font-family:monospace">'+esc(x.from)+'</span></div></td>'+
+      '<td style="padding:7px 8px;vertical-align:top">'+x.parts.map(function(p){return '<span style="display:inline-block;font-family:monospace;font-size:12px;background:var(--bg3);border:1px solid var(--bd);border-radius:5px;padding:1px 6px;margin:1px">'+esc(p)+'</span>';}).join(" ")+'</td>'+
+      '<td style="padding:7px 8px;vertical-align:top;font-size:12px">'+(x.ok?'<span style="color:var(--green);white-space:nowrap">\u2713 qty '+x.qty+'</span>':'<span style="color:var(--red)">qty is '+x.qty+'<br>fix by hand</span>')+'</td></tr>';}).join("");
+  var nOk=L.filter(function(x){return x.ok;}).length;
+  var th='padding:7px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;font-weight:600';
+  return '<div class="mh" data-wide="1"><div class="mt">Separate serial numbers ('+L.length+' item'+(L.length===1?'':'s')+')</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb"><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">These items have several serial numbers typed into one field. Separating them gives each S/N its own line (location, box, expiry, comment, draw, shipment). Stock quantities do not change.</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:58vh;overflow:auto"><table style="width:100%;min-width:0;border-collapse:collapse;font-size:13px;table-layout:fixed"><colgroup><col style="width:34px"><col style="width:46%"><col><col style="width:92px"></colgroup><thead><tr style="background:var(--bg3);position:sticky;top:0"><th style="'+th+'"></th><th style="'+th+'">Item</th><th style="'+th+'">Will become</th><th style="'+th+'">Check</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="empty">Nothing to separate — every serial number has its own line.</td></tr>')+'</tbody></table></div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Close</button>'+(nOk?'<button class="btn bp" id="btn-snsplit-go">Separate '+nOk+' item'+(nOk===1?'':'s')+'</button>':'')+'</div>';
+}
+function submitSnSplit(){
+  var L=multiSnItems(),n=0;
+  document.querySelectorAll(".snsplit-cb").forEach(function(cb){if(!cb.checked)return;var x=L[parseInt(cb.getAttribute("data-i"))];if(x&&x.ok&&applySnSplit(x.item))n++;});
+  if(!n){closeModal();return;}
+  save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}
+  closeModal();renderPage();
+  S.modal={type:"snsplit"};showModal(buildSnSplitModal().replace('<div class="mb">','<div class="mb"><div style="background:var(--gbg);border:1px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--green)">✓ '+n+' item'+(n===1?'':'s')+' separated.</div>'));
 }
 function bulkShipHint(){
   var el=document.getElementById("bulk-ship-hint");if(!el)return;
@@ -1988,6 +2056,8 @@ function renderInventory(){
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
     
     '</div></div>'+
+    ((canEdit()&&!shipFilter)?(function(){var _ms=multiSnItems();if(!_ms.length)return "";
+      return '<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 '+_ms.length+' item'+(_ms.length===1?' has':'s have')+' several serial numbers in one field (e.g. '+esc(_ms[0].item.name)+': '+esc(_ms[0].from)+').</span><button class="btn sm" id="btn-snsplit" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Separate S/Ns</button></div>';})():'')+
     ((shipFilter&&_ships[S.fShipDate])?(function(){var s=_ships[S.fShipDate],p=shipPLs(s);
       return '<div style="background:var(--bg3);border-bottom:1px solid var(--bd);padding:9px 18px;font-size:12px;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center"><span><b style="color:var(--tx)">Shipment '+esc(fd(s.date))+'</b></span><span>'+(p.length?'<b style="color:var(--tx)">'+p.map(function(x){return esc(plTxt(x));}).join(" + ")+'</b>':'<span style="color:var(--amber)">no PL</span>')+'</span><span>'+s.lines.length+' lines \u00b7 '+s.units+' units received</span>'+
         (p.length>1?'<span style="color:var(--amber)">\u26A0 more than one PL on this date \u2014 use Edit shipment to set one</span>':(s.noPl&&p.length?'<span style="color:var(--amber)">\u26A0 '+s.noPl+' line(s) without PL \u2014 Edit shipment fixes it</span>':''))+
@@ -2616,6 +2686,8 @@ function submitItem(id){
   if(!name){alert("Please enter a description.");return;}
   if(locEl&&!loc){alert("Please enter a location.");return;}
   var hasSerTable=document.querySelectorAll(".edit-sn-loc").length>0;
+  var _snIn=document.getElementById("m-sn")?splitSnText(gv("m-sn")):[];
+  if(_snIn.length>1&&document.getElementById("m-qty")&&parseInt(gv("m-qty"))!==_snIn.length){alert("You entered "+_snIn.length+" serial numbers but the quantity is "+gv("m-qty")+".\n\nEach serial number is one unit \u2014 make them match, then save.");return;}
   var item;
   if(id){
     item=S.items.find(function(i){return i.id===id;});
@@ -2697,6 +2769,7 @@ function submitItem(id){
       S.tx.push(_nt);S._pendingAddTx=_nt;
     }
   }
+  if(_snIn.length>1&&!hasSerTable)applySnSplit(item); // "a, b" typed in the S/N box -> separate serials
   saveAndPushItem(item);
   if(S._pendingAddTx){pushTx(S._pendingAddTx);S._pendingAddTx=null;}
   closeModal(); renderAll();
@@ -3071,6 +3144,11 @@ function parseBulkPaste(){
     if((v[0]&&v[0].trim())||(v[1]&&v[1].trim()))rows.push({name:v[0]||"",pn:v[1]||"",alt_pn:v[2]||"",sn:v[3]||"",qty:parseInt(v[4])||1,qtyBlank:!(v[4]&&String(v[4]).trim()),subsys:v[5]||"",location:v[6]||"",floor:v[7]||"",expiry:v[8]||"",notes:v[9]||"",type:"",smr:""});
   });
   if(!rows.length){alert("No data entered.");return;}
+  var _xr=[];rows.forEach(function(row){var ps=splitSnText(row.sn);
+    if(ps.length<2){if(ps.length===1)row.sn=ps[0];_xr.push(row);return;}
+    if(row.qtyBlank||row.qty===ps.length)ps.forEach(function(p){var c2=JSON.parse(JSON.stringify(row));c2.sn=p;c2.qty=1;c2.qtyBlank=false;_xr.push(c2);});
+    else{row.snMismatch=ps.length;_xr.push(row);}});
+  rows=_xr;
   var res=rows.map(function(row){
     // Normalize for comparison - trim + lowercase
     var rpn=(row.pn||'').trim().toLowerCase();
@@ -3108,8 +3186,9 @@ function parseBulkPaste(){
     else if(r.status==="cname"){sc="var(--amber)";sl="\u26A0 REVIEW: same name, different P/N";}
     else {sc="var(--amber)";sl="\u26A0 REVIEW";}
     if(qtyMissing){sc="var(--red)";sl="QTY NOT INSERTED";}
-    if(r.dupSn){sc="var(--red)";sl="\u26D4 S/N "+esc(r.row.sn)+" ALREADY IN STOCK \u2014 will be skipped";}
-    var chk=(r.status==="cpn"||r.status==="cname"||r.dupSn)?"":"checked";
+    if(r.row.snMismatch){sc="var(--red)";sl="\u26D4 "+r.row.snMismatch+" S/Ns but qty "+r.row.qty+" \u2014 fix the row (one S/N per unit) \u2014 will be skipped";}
+    else if(r.dupSn){sc="var(--red)";sl="\u26D4 S/N "+esc(r.row.sn)+" ALREADY IN STOCK \u2014 will be skipped";}
+    var chk=(r.status==="cpn"||r.status==="cname"||r.dupSn||r.row.snMismatch)?"":"checked";
     var locCell;
     if(r.status==="new"){
       var rl=(r.row.location&&r.row.location.trim())?r.row.location.trim():"";
@@ -3170,6 +3249,7 @@ function executeBulkImport(){
   var importedTx=[],_dupSkipped=[];
   _bulkMatches.forEach(function(r,i){
     if(r.match){var _fresh=S.items.find(function(x){return x.id===r.match.id;});if(_fresh)r.match=_fresh;}
+    if(r.row.snMismatch){sk++;return;}
     var eSn=(r.row.sn||"").trim();
     var eLoc=(r.row.location||"").trim();
     var eBox=(r.row.floor||"").trim();
@@ -3373,6 +3453,8 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-ship-selnone"){S._shipSel={};S._moveMsg="";renderPage();return;}
   if(t.id==="btn-ship-move"){if(!canEdit())return;var _k=shipSelKeys();if(!_k.length){alert("Tick the lines you want to move first.");return;}var _h2=buildMoveLinesModal(_k);if(_h2){S.modal={type:"moveLines"};showModal(_h2);}return;}
   if(t.id==="btn-mv-save"){if(!canEdit())return;submitMoveLines();return;}
+  if(t.id==="btn-snsplit"){if(!canEdit())return;S.modal={type:"snsplit"};showModal(buildSnSplitModal());return;}
+  if(t.id==="btn-snsplit-go"){if(!canEdit())return;submitSnSplit();return;}
   if(t.id==="btn-shipments"){S.modal={type:"shiplist"};showModal(buildShipmentsModal());return;}
   if(t.id==="btn-es-save"){if(!canEdit())return;submitEditShipment();return;}
   if(t.id==="btn-rpt-apply"){S._rptFrom=gv("rpt-from");S._rptTo=gv("rpt-to");renderPage();return;}
@@ -3732,9 +3814,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP1-CLEANUP (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP1-CLEANUP LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SHIP1-CLEANUP-SN (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SHIP1-CLEANUP-SN LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-SN";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
