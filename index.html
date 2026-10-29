@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP1-CLEANUP-SN3</title>
+<title>OSPREY IMS v-SHIP1-CLEANUP-CHK</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -140,6 +140,9 @@ tbody tr.rclick:hover td{background:rgba(56,139,253,.07)}
 .txdd{background:var(--rbg);color:var(--red);border:1px solid var(--rbd)}
 .txdr{background:var(--gbg);color:var(--green);border:1px solid var(--gbd)}
 .txdb{background:rgba(59,130,246,.12);color:var(--blue2);border:1px solid rgba(59,130,246,.45)}
+.txdc{background:var(--bg3);color:var(--tx2);border:1px solid var(--bd)}
+tr.qbad td{background:rgba(239,68,68,.10)}tr.qbad td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.mrow.qbad{background:rgba(239,68,68,.10);border-color:var(--red)}
 .eok{color:var(--green);font-size:12px}.esoon{color:var(--amber);font-size:12px;font-weight:500}.egone{color:var(--red);font-size:12px;font-weight:500}
 #login-screen{display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);align-items:center;justify-content:center;padding:20px;overflow-y:auto}
 .login-card{width:90%;max-width:360px;background:var(--bg2);border:1px solid var(--bd2);border-radius:12px;padding:30px 34px;text-align:center}
@@ -766,7 +769,7 @@ function normalizeSheetTx(list){
   });
   return list;
 }
-function _isShipRcv(t){return t&&t.type==="receive"&&!isReturnTx(t);}
+function _isShipRcv(t){return t&&t.type==="receive"&&!isReturnTx(t)&&!isCorrTx(t);}
 // One shipment = one arrival date. Lines come from the receipt transactions (the record of what
 // actually arrived), plus serials / batches / items that carry a date but have no receipt on record.
 function buildShipments(){
@@ -1126,13 +1129,44 @@ function reconcileItem(it){
   if(Array.isArray(it.serials)&&it.serials.length){it.qty=it.serials.length;return;}
   if(Array.isArray(it.lots)&&it.lots.length){it.qty=it.lots.reduce(function(s,L){return s+(parseInt(L.qty)||0);},0);}
 }
-// Expected stock from the transaction ledger (only when the item's full history is on record)
-function ledgerQty(item){
-  var txs=S.tx.filter(function(t){return t.itemId===item.id;}).sort(function(a,b){return (a.ts||0)-(b.ts||0);});
+// ── STOCK CHECK: what the records say the stock should be ─────────────────────
+// expected = starting stock + receipts + returns - draws (+ stock corrections).
+// Starting stock = the item's "Original" qty, unless the item was CREATED by its first receipt
+// (new item from an import / manual add: its id is the creation time, within 30 min of that receipt).
+function isCorrTx(t){return !!t&&t.reasonCode==="Correction";}
+function txIndex(){var ix={};(S.tx||[]).forEach(function(t){(ix[t.itemId]||(ix[t.itemId]=[])).push(t);});return ix;}
+function stockCheck(item,ix){
+  var txs=(ix?ix[item.id]:S.tx.filter(function(t){return t.itemId===item.id;}))||[];
   if(!txs.length)return null;
-  var f=txs[0];
-  if(f.type!=="receive"||["Import","Add"].indexOf(f.reasonCode)<0||(parseInt(f.qty)||0)!==(parseInt(item.initialQty)||0))return null;
-  return txs.reduce(function(s,t){return s+txEffect(t.type,t.qty);},0);
+  txs=txs.slice().sort(function(a,b){return (parseInt(a.ts)||0)-(parseInt(b.ts)||0);});
+  var r={rec:0,drawn:0,ret:0,corr:0};
+  txs.forEach(function(t){var q=parseInt(t.qty)||0;
+    if(isCorrTx(t))r.corr+=txEffect(t.type,q);
+    else if(isReturnTx(t))r.ret+=q;
+    else if(t.type==="receive")r.rec+=q;
+    else if(t.type==="draw")r.drawn+=q;});
+  var first=txs.filter(function(t){return t.type==="receive"&&!isReturnTx(t)&&!isCorrTx(t);})[0];
+  var born=parseFloat(item.id);
+  r.created=!!(first&&born>1e12&&Math.abs(born-(parseInt(first.ts)||0))<30*60*1000);
+  r.base=r.created?0:(parseInt(item.initialQty)||0);
+  r.expected=r.base+r.rec+r.ret-r.drawn+r.corr;
+  r.firstQty=first?(parseInt(first.qty)||0):0;r.firstDate=first?first.date:"";r.initial=parseInt(item.initialQty)||0;
+  // old import bug: a NEW part arrived with quantity N but its receipt was written as +1
+  r.newUnder=r.created&&r.firstQty<r.initial;
+  r.qty=parseInt(item.qty)||0;
+  r.bad=r.expected!==r.qty;
+  return r;
+}
+function ledgerQty(item){var r=stockCheck(item);return r?r.expected:null;}
+function stockBreakdown(r){
+  return (r.created?'':'original <b>'+r.base+'</b> + ')+'received <b>'+r.rec+'</b>'+(r.ret?' + returned <b>'+r.ret+'</b>':'')+' \u2212 drawn <b>'+r.drawn+'</b>'+(r.corr?' '+(r.corr>0?'+':'\u2212')+' corrections <b>'+Math.abs(r.corr)+'</b>':'')+' = <b>'+r.expected+'</b>';
+}
+// "The physical count is right": record a correction so the records match the stock (stock itself unchanged)
+function confirmStockCorrect(item){
+  var r=stockCheck(item);if(!r||!r.bad)return;
+  var d=r.qty-r.expected;
+  var t={id:uid(),itemId:item.id,itemName:item.name,type:d>0?"receive":"draw",qty:Math.abs(d),date:tod(),person:S._fullName||(S.currentUser?S.currentUser.name:""),purpose:"Stock count confirmed: "+r.qty+" (records said "+r.expected+")",reasonCode:"Correction",remaining:r.qty,serial:"",invoice:"",ts:Date.now()};
+  S.tx.push(t);
 }
 function applyQtyDeltaToLots(item,delta){
   if(!Array.isArray(item.lots)||!item.lots.length){item.qty=Math.max(0,(parseInt(item.qty)||0)+delta);return;}
@@ -1286,13 +1320,16 @@ function hl(txt) {
 function byCol(col){ if(S.sCol===col)S.sDir*=-1;else{S.sCol=col;S.sDir=1;} renderPage(); }
 function thc(col) { return S.sCol===col?(S.sDir===1?"asc":"desc"):""; }
 
+function computeQtyBad(){var ix=txIndex(),m={},n=0;S.items.forEach(function(it){var r=stockCheck(it,ix);if(r&&r.bad){m[it.id]=r;n++;}});S._qtyBadSet=m;S._qtyBadN=n;return m;}
 function filt() {
+  computeQtyBad();
   var q=S.search.trim().toLowerCase();
   var items=S.items.filter(function(item){
     if(S._statFilter==="low"&&["low","crit"].indexOf(sst(item))<0)return false;
     if(S._statFilter==="zero"&&sst(item)!=="zero")return false;
     if(S._statFilter==="exp"){var se=est(item);if(se!=="soon"&&se!=="gone")return false;}
     if(S._showNewOnly&&(!S._newItems||S._newItems.indexOf(item.id)<0))return false;
+    if(S._qtyBadOnly&&!(S._qtyBadSet&&S._qtyBadSet[item.id]))return false;
     if(!S._statFilter){
       if(q&&![item.name,item.pn,item.alt_pn||"",item.subsys||"",item.smr||""].some(function(v){return v.toLowerCase().indexOf(q)>=0;}))return false;
       if(S.fLoc&&item.location!==S.fLoc)return false;
@@ -1950,8 +1987,8 @@ function serialLocationSection(item){
 }
 function detailHTML(item){
   var txs=S.tx.filter(function(t){return t.itemId===item.id;}).sort(function(a,b){return (parseInt(b.ts)||0)-(parseInt(a.ts)||0);});
-  var drawn=txs.filter(function(t){return t.type==="draw";}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
-  var recvd=txs.filter(function(t){return t.type==="receive"&&!isReturnTx(t);}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
+  var drawn=txs.filter(function(t){return t.type==="draw"&&!isCorrTx(t);}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
+  var recvd=txs.filter(function(t){return t.type==="receive"&&!isReturnTx(t)&&!isCorrTx(t);}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
   var rtnd=txs.filter(isReturnTx).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
   // Running balance: stock right after each transaction, counted back from today's stock
   var _bal={},_b=parseInt(item.qty)||0;txs.forEach(function(t){_bal[t.id]=_b;_b-=txEffect(t.type,t.qty);});
@@ -1996,8 +2033,13 @@ function detailHTML(item){
     '<div style="margin-top:11px;height:8px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+bc+';border-radius:6px;transition:width .3s"></div></div>'+
     '<div style="margin-top:10px;font-size:12px;color:var(--tx2)">Original <b style="color:var(--tx)">'+(parseInt(item.initialQty)||0)+'</b> &nbsp;\u00b7&nbsp; Drawn <b style="color:var(--tx)">'+drawn+'</b> &nbsp;\u00b7&nbsp; Returned <b style="color:var(--tx)">'+rtnd+'</b> &nbsp;\u00b7&nbsp; Received <b style="color:var(--tx)">'+recvd+'</b></div>'+
     '</div>'+
-    (function(){var L=ledgerQty(item);if(L===null||L===(parseInt(item.qty)||0)||(Array.isArray(item.serials)&&item.serials.length))return "";
-      return '<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 Stock shows <b>'+(parseInt(item.qty)||0)+'</b> but the transactions add up to <b>'+L+'</b>.</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-stock" data-id="'+esc(item.id)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Set stock to '+L+'</button>':'')+'</div>';})()+
+    (function(){var r=stockCheck(item);if(!r||!r.bad)return "";var ser=isSerialized(item);
+      return '<div style="background:rgba(239,68,68,.10);border:1px solid var(--red);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--tx)">'+
+        '<div style="color:var(--red);font-weight:700;margin-bottom:4px">\u26A0 Stock shows '+r.qty+' but the records add up to '+r.expected+'</div>'+
+        '<div style="color:var(--tx2)">'+stockBreakdown(r)+'.</div>'+
+        '<div style="color:var(--tx2);margin-top:4px">'+(r.newUnder?'This part was created by the import of '+esc(fd(r.firstDate))+' with quantity <b>'+r.initial+'</b>, but that receipt was written as <b>+'+r.firstQty+'</b> (an old import bug). If '+r.initial+' really arrived, press \u201cStock '+r.qty+' is correct\u201d.':'')+(r.newUnder?'':(r.expected>r.qty?'Usually this means a shipment was recorded but its units were not added to stock.':'Usually this means a draw was recorded but not taken out of stock, or stock was added without a receipt.'))+((ser&&!r.newUnder)?' For serialized parts, add the missing S/N'+(r.expected-r.qty>1?'s':'')+' in <b>Edit</b> (or use \u201cPut back in stock\u201d below if it is listed).':'')+'</div>'+
+        (canAdmin()?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+(!ser?'<button class="btn sm" data-action="fix-stock" data-id="'+esc(item.id)+'" style="border-color:var(--red);color:var(--red)">Set stock to '+r.expected+'</button>':'')+
+          '<button class="btn sm" data-action="fix-confirm" data-id="'+esc(item.id)+'">Stock '+r.qty+' is correct (I counted)</button></div>':'')+'</div>';})()+
     (function(){if(!(Array.isArray(item.serials)&&item.serials.length)&&!S.tx.some(function(t){return t.itemId===item.id&&(t.serial||t.sn);}))return "";
       var I=serialLedgerIssues(item);if(!I.dups.length&&!I.missing.length)return "";
       var box='<div style="background:var(--abg);border:1px solid var(--amber);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--amber)">';
@@ -2044,8 +2086,9 @@ function renderInventory(){
     var sm=item.smr?'<span class="smrc">'+esc(item.smr)+'</span>':'<span style="color:var(--tx3);font-size:12px">---</span>';
     var _dloc=itemDisplayLoc(item);var lc=_dloc?'<span class="loctag">'+esc(_dloc)+'</span>':'<span style="color:var(--tx3)">---</span>';
     var boxc=item.floor?'<span style="font-size:12px;color:var(--tx2);font-family:monospace">'+esc(item.floor)+'</span>':'<span style="color:var(--tx3)">---</span>';
-    rows+='<tr class="rclick" data-action="detail" data-id="'+esc(item.id)+'">'
-      +'<td style="max-width:220px;font-weight:500">'+hl(item.name)+'</td>'
+    var _qb=S._qtyBadSet&&S._qtyBadSet[item.id];
+    rows+='<tr class="rclick'+(_qb?' qbad':'')+'" data-action="detail" data-id="'+esc(item.id)+'"'+(_qb?' title="Stock '+_qb.qty+' but the records add up to '+_qb.expected+'"':'')+'>'
+      +'<td style="max-width:220px;font-weight:500">'+hl(item.name)+(_qb?'<div style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px">\u26A0 records say '+_qb.expected+'</div>':'')+'</td>'
       +'<td><span class="pn">'+hl(item.pn)+'</span></td>'
       +'<td class="hide-sm"><span class="apn">'+(item.alt_pn?hl(item.alt_pn):'---')+'</span></td>'
       +'<td class="hide-sm"><span class="apn">'+(item.sn?esc(item.sn):'---')+'</span></td>'
@@ -2058,7 +2101,7 @@ function renderInventory(){
       +'<td style="white-space:nowrap">'+(canEdit()?'<div style="display:flex;gap:3px"><button class="btn sm br" data-action="draw" data-id="'+esc(item.id)+'" style="padding:0 10px">Draw</button></div>':'<span style="font-size:11px;color:var(--tx3)">Read only</span>')+'</td></tr>';
     // Mobile card
     var stkColor=item.qty===0?'var(--red)':item.qty<=2?'var(--amber)':'var(--green)';
-    cards+='<div class="mrow" data-action="detail" data-id="'+esc(item.id)+'">'
+    cards+='<div class="mrow'+(_qb?' qbad':'')+'" data-action="detail" data-id="'+esc(item.id)+'">'
       +'<div class="mrow-main">'
       +'<div class="mrow-name">'+hl(item.name)+'</div>'
       +'<div class="mrow-sub">'+hl(item.pn)
@@ -2067,7 +2110,7 @@ function renderInventory(){
       +(itemSerials(item).length?'<span class="mrow-dot">·</span>S/N '+hl(itemSerials(item).join(", ")):'')
       +'</div>'
       +'</div>'
-      +'<div class="mrow-stk" style="color:'+stkColor+'">'+item.qty+'</div>'
+      +'<div class="mrow-stk" style="color:'+(_qb?'var(--red)':stkColor)+'">'+item.qty+(_qb?'<div style="font-size:10px">\u2260 '+_qb.expected+'</div>':'')+'</div>'
       +'</div>';
   });}
   if(shipFilter){
@@ -2127,6 +2170,7 @@ function renderInventory(){
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
     
     '</div></div>'+
+    ((!shipFilter&&(S._qtyBadN||S._qtyBadOnly))?'<div style="background:rgba(239,68,68,.10);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--red);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span><b>\u26A0 '+(S._qtyBadN||0)+' item'+(S._qtyBadN===1?'':'s')+'</b>: stock does not match the records (red lines). Open one to see why and fix it.</span><button class="btn sm" id="btn-qtybad" style="border-color:var(--red);color:var(--red);margin-left:auto">'+(S._qtyBadOnly?'Show all items':'Show only these')+'</button></div>':'')+
     ((canEdit()&&!shipFilter)?(function(){var _ms=multiSnItems(),_rs=rcptSplitList(),_n=_ms.length+_rs.length;if(!_n)return "";
       var _parts=[];if(_ms.length)_parts.push(_ms.length+" S/N field"+(_ms.length===1?"":"s")+" with several S/Ns");var _r2=_rs.filter(function(x){return x.qty>1;}).length,_r1=_rs.length-_r2;if(_r2)_parts.push(_r2+" receipt"+(_r2===1?"":"s")+" with several units on one line");if(_r1)_parts.push(_r1+" receipt"+(_r1===1?"":"s")+" without S/N");
       return '<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 Serial number clean-up: '+_parts.join(", ")+'.</span><button class="btn sm" id="btn-snsplit" style="border-color:var(--amber);color:var(--amber);margin-left:auto">S/N clean-up</button></div>';})():'')+
@@ -2170,6 +2214,7 @@ function migrateLegacyReturns(){
   return ch;
 }
 function txStyle(t){
+  if(isCorrTx(t))return{tag:"txdc",lbl:"CORR",lbl2:"CORRECTION",sign:t.type==="draw"?"-":"+",col:"var(--tx2)"};
   if(isReturnTx(t))return{tag:"txdb",lbl:"RTRN",lbl2:"RETURN",sign:"+",col:"var(--blue2)"};
   if(t.type==="draw")return{tag:"txdd",lbl:"DRAW",lbl2:"DRAW",sign:"-",col:"var(--red)"};
   if(t.type==="return")return{tag:"txdb",lbl:"RTRN",lbl2:"RETURNED",sign:"\u21a9 ",col:"var(--blue2)"};
@@ -3525,6 +3570,7 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-ship-selnone"){S._shipSel={};S._moveMsg="";renderPage();return;}
   if(t.id==="btn-ship-move"){if(!canEdit())return;var _k=shipSelKeys();if(!_k.length){alert("Tick the lines you want to move first.");return;}var _h2=buildMoveLinesModal(_k);if(_h2){S.modal={type:"moveLines"};showModal(_h2);}return;}
   if(t.id==="btn-mv-save"){if(!canEdit())return;submitMoveLines();return;}
+  if(t.id==="btn-qtybad"){S._qtyBadOnly=!S._qtyBadOnly;renderPage();return;}
   if(t.id==="btn-snsplit"){if(!canEdit())return;S.modal={type:"snsplit"};showModal(buildSnSplitModal());setTimeout(snfixCount,0);return;}
   if(t.id==="btn-snsplit-go"){if(!canEdit())return;submitSnSplit();return;}
   if(t.id==="btn-shipments"){S.modal={type:"shiplist"};showModal(buildShipmentsModal());return;}
@@ -3732,6 +3778,7 @@ return;}
     if(a==="ship-view"){S.fShipDate=el.getAttribute("data-date");S.fInvoice="";S.fNoInvoice=false;S.tab="inventory";closeModal();renderAll();return;}
     if(a==="ship-edit"){if(!canEdit())return;var _ed=el.getAttribute("data-date");closeModal();S.modal={type:"editship",back:"shiplist"};showModal(buildEditShipmentModal(_ed));return;}
     if(a==="bulk-use-pl"){var _bi=document.getElementById("bulk-invoice");if(_bi)_bi.value=el.getAttribute("data-pl");bulkShipHint();return;}
+    if(a==="fix-confirm"){if(!canAdmin())return;var _ci=S.items.find(function(x){return x.id===id;});if(_ci){confirmStockCorrect(_ci);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_ci));renderPage();}return;}
     if(a==="fix-stock"){if(!canAdmin())return;var _fi=S.items.find(function(x){return x.id===id;});var _L=_fi?ledgerQty(_fi):null;if(_fi&&_L!==null){applyQtyDeltaToLots(_fi,_L-(parseInt(_fi.qty)||0));markDirty(_fi.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_fi));renderPage();}return;}
     return;
   }
@@ -3888,9 +3935,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP1-CLEANUP-SN3 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP1-CLEANUP-SN3 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-SN3";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SHIP1-CLEANUP-CHK (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SHIP1-CLEANUP-CHK LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-CHK";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
