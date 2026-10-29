@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP1-CLEANUP-SN2</title>
+<title>OSPREY IMS v-SHIP1-CLEANUP-SN3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1009,37 +1009,62 @@ function applyRcptSplit(x){
   t.qty=1;t.serial=x.serials[0];t.sn=x.serials[0];
   return true;
 }
-function buildSnSplitModal(){
+function buildSnSplitModal(msg){
   var L=multiSnItems(),R=rcptSplitList();
-  var rows=L.map(function(x,i){
-    return '<tr style="border-top:1px solid var(--bd)"><td style="padding:7px 8px;vertical-align:top"><input type="checkbox" class="snsplit-cb" data-i="'+i+'"'+(x.ok?' checked':' disabled')+' style="width:16px;height:16px"></td>'+
-      '<td style="padding:7px 8px;vertical-align:top;font-weight:600;word-break:break-word">'+esc(x.item.name)+'<div style="font-size:11px;color:var(--tx3);font-weight:400">'+esc(x.item.pn)+' \u00b7 now: <span style="font-family:monospace">'+esc(x.from)+'</span></div></td>'+
-      '<td style="padding:7px 8px;vertical-align:top">'+x.parts.map(function(p){return '<span style="display:inline-block;font-family:monospace;font-size:12px;background:var(--bg3);border:1px solid var(--bd);border-radius:5px;padding:1px 6px;margin:1px">'+esc(p)+'</span>';}).join(" ")+'</td>'+
-      '<td style="padding:7px 8px;vertical-align:top;font-size:12px">'+(x.ok?'<span style="color:var(--green);white-space:nowrap">\u2713 qty '+x.qty+'</span>':'<span style="color:var(--red)">qty is '+x.qty+'<br>fix by hand</span>')+'</td></tr>';}).join("");
-  var nOk=L.filter(function(x){return x.ok;}).length,rOk=R.filter(function(x){return x.ok;}).length;
-  var rrows=R.map(function(x,i){var t=x.tx;
-    return '<tr style="border-top:1px solid var(--bd)"><td style="padding:7px 8px;vertical-align:top"><input type="checkbox" class="rcsplit-cb" data-i="'+i+'"'+(x.ok?' checked':' disabled')+' style="width:16px;height:16px"></td>'+
-      '<td style="padding:7px 8px;vertical-align:top;font-weight:600;word-break:break-word">'+esc(x.item.name)+'<div style="font-size:11px;color:var(--tx3);font-weight:400">receipt '+esc(fd(t.date))+(t.invoice?' \u00b7 '+esc(plTxt(t.invoice)):'')+' \u00b7 +'+x.qty+' with no S/N</div></td>'+
-      '<td style="padding:7px 8px;vertical-align:top">'+x.serials.map(function(p){return '<span style="display:inline-block;font-family:monospace;font-size:12px;background:var(--bg3);border:1px solid var(--bd);border-radius:5px;padding:1px 6px;margin:1px">+1 '+esc(p)+'</span>';}).join(" ")+'</td>'+
-      '<td style="padding:7px 8px;vertical-align:top;font-size:12px">'+(!x.ok?'<span style="color:var(--red)">only '+x.serials.length+' S/N free<br>leave as is</span>':(x.sure?'<span style="color:var(--green)">\u2713</span>':'<span style="color:var(--amber)">\u2713 best match<br>check S/Ns</span>'))+'</td></tr>';}).join("");
-  var th='padding:7px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;font-weight:600';
-  return '<div class="mh" data-wide="1"><div class="mt">Separate serial numbers ('+L.length+' item'+(L.length===1?'':'s')+')</div><button class="mc" id="modal-close-btn">x</button></div>'+
-    '<div class="mb"><div style="font-size:12px;color:var(--tx2);margin-bottom:10px">These items have several serial numbers typed into one field. Separating them gives each S/N its own line (location, box, expiry, comment, draw, shipment). Stock quantities do not change.</div>'+
-    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:58vh;overflow:auto"><table style="width:100%;min-width:0;border-collapse:collapse;font-size:13px;table-layout:fixed"><colgroup><col style="width:34px"><col style="width:46%"><col><col style="width:92px"></colgroup><thead><tr style="background:var(--bg3);position:sticky;top:0"><th style="'+th+'"></th><th style="'+th+'">Item</th><th style="'+th+'">Will become</th><th style="'+th+'">Check</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="empty">Nothing here \u2014 every serial number has its own field.</td></tr>')+'</tbody></table></div>'+
-    '<div style="font-size:12px;font-weight:600;color:var(--tx);margin:16px 0 6px">Receipts of several serialized units on one line ('+R.length+')</div>'+
-    '<div style="font-size:12px;color:var(--tx2);margin-bottom:8px">Each unit gets its own +1 receipt with its S/N, so you can edit the S/N per transaction. Totals do not change.'+(L.some(function(x){return x.ok;})?' <span style="color:var(--amber)">Separate the S/N fields above first \u2014 more receipts may appear here after that.</span>':'')+'</div>'+
-    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:40vh;overflow:auto"><table style="width:100%;min-width:0;border-collapse:collapse;font-size:13px;table-layout:fixed"><colgroup><col style="width:34px"><col style="width:46%"><col><col style="width:92px"></colgroup><tbody>'+(rrows||'<tr><td colspan="4" class="empty">Nothing to separate.</td></tr>')+'</tbody></table></div></div>'+
-    '<div class="mf"><button class="btn" id="modal-close-btn2">Close</button>'+((nOk||rOk)?'<button class="btn bp" id="btn-snsplit-go">Separate '+(nOk+rOk)+'</button>':'')+'</div>';
+  var R2=R.filter(function(x){return x.qty>1;}),R1=R.filter(function(x){return x.qty===1;});
+  var chip=function(p){return '<span style="display:inline-block;font-family:monospace;font-size:12px;background:var(--bg3);border:1px solid var(--bd);border-radius:5px;padding:1px 6px;margin:1px">'+esc(p)+'</span>';};
+  var row=function(kind,i,ok,checked,title,sub,result,status){
+    return '<tr style="border-top:1px solid var(--bd)"><td style="padding:8px;vertical-align:top">'+(ok?'<input type="checkbox" class="snfix-cb" data-action="snfix-count" data-kind="'+kind+'" data-i="'+i+'"'+(checked?' checked':'')+' style="width:16px;height:16px;cursor:pointer">':'<span style="color:var(--red);font-weight:700">!</span>')+'</td>'+
+      '<td style="padding:8px;vertical-align:top;word-break:break-word"><div style="font-weight:600">'+esc(title)+'</div><div style="font-size:11px;color:var(--tx3)">'+sub+'</div></td>'+
+      '<td style="padding:8px;vertical-align:top;font-size:12px;color:var(--tx2)">'+result+'</td>'+
+      '<td style="padding:8px;vertical-align:top;font-size:12px">'+status+'</td></tr>';};
+  var table=function(rows){return '<div style="border:1px solid var(--bd);border-radius:9px;overflow:hidden"><table style="width:100%;min-width:0;border-collapse:collapse;font-size:13px;table-layout:fixed"><colgroup><col style="width:34px"><col style="width:38%"><col><col style="width:110px"></colgroup><tbody>'+rows+'</tbody></table></div>';};
+  var head=function(sec,n,title,expl){return '<div style="display:flex;align-items:center;gap:8px;margin:18px 0 4px"><div style="font-size:13px;font-weight:700;color:var(--tx)">'+title+' ('+n+')</div><span style="margin-left:auto;font-size:12px"><a href="#" data-action="snfix-sec" data-sec="'+sec+'" data-on="1" style="color:var(--blue2)">tick all</a> · <a href="#" data-action="snfix-sec" data-sec="'+sec+'" data-on="0" style="color:var(--blue2)">none</a></span></div><div style="font-size:12px;color:var(--tx2);margin-bottom:8px">'+expl+'</div>';};
+  var h='';
+  if(L.length){
+    h+=head("L",L.length,"1 · Several S/Ns typed in one field","Example: the S/N field says “85-065, 85-067”. Each S/N becomes its own unit, so it can be drawn, moved and edited on its own.");
+    h+=table(L.map(function(x,i){
+      return row("L",i,x.ok,true,x.item.name,esc(x.item.pn)+' · S/N field now: <span style="font-family:monospace">'+esc(x.from)+'</span>',
+        x.parts.length+' separate S/Ns: '+x.parts.map(chip).join(" "),
+        x.ok?'<span style="color:var(--green)">✓ ready</span>':'<span style="color:var(--red)">'+x.parts.length+' S/Ns but quantity '+x.qty+'. Fix in Edit item first.</span>');}).join(""));
+  }
+  if(R2.length){
+    h+=head("R2",R2.length,(L.length?"2":"1")+" · One receipt line for several units","Example: PRU ASSY arrived as one line “+4”. It becomes 4 lines of “+1”, each with its own S/N, so you can edit the S/N of each one. Same date, same PL, same total.");
+    h+=table(R2.map(function(x){var i=R.indexOf(x),t=x.tx;
+      return row("R",i,x.ok,true,x.item.name,'Receipt '+esc(fd(t.date))+(t.invoice?' · '+esc(plTxt(t.invoice)):'')+' · <b>+'+x.qty+'</b> on one line',
+        x.ok?x.qty+' lines of +1: '+x.serials.map(chip).join(" "):'Item has only '+x.serials.length+' S/N'+(x.serials.length===1?'':'s')+' left for this receipt'+(x.serials.length?': '+x.serials.map(chip).join(" "):''),
+        !x.ok?'<span style="color:var(--red)">Receipt says '+x.qty+' units. Add the missing S/N'+(x.qty-x.serials.length>1?'s':'')+' in Edit item first.</span>':(x.sure?'<span style="color:var(--green)">✓ ready</span>':'<span style="color:var(--amber)">✓ best guess — check the S/Ns</span>'));}).join(""));
+  }
+  if(R1.length){
+    var nS=(L.length?1:0)+(R2.length?1:0)+1;
+    h+=head("R1",R1.length,nS+" · Receipts that don’t say which S/N arrived","These are single units (+1). The receipt is correct, but the S/N was never written on it, so when you edit the transaction there is no S/N to edit. This writes the item’s S/N on the receipt. Optional.");
+    h+=table(R1.map(function(x){var i=R.indexOf(x),t=x.tx;
+      return row("R",i,x.ok,true,x.item.name,'Receipt '+esc(fd(t.date))+(t.invoice?' · '+esc(plTxt(t.invoice)):'')+' · +1, S/N not written',
+        x.ok?'write S/N '+x.serials.map(chip).join(" ")+' on the receipt':'no free S/N on the item',
+        x.ok?(x.sure?'<span style="color:var(--green)">✓ ready</span>':'<span style="color:var(--amber)">✓ best guess — check</span>'):'<span style="color:var(--red)">Add the S/N in Edit item first.</span>');}).join(""));
+  }
+  if(!h)h='<div class="empty" style="padding:30px">Nothing to fix — every serial number has its own line and every receipt names its S/N.</div>';
+  return '<div class="mh" data-wide="1"><div class="mt">Serial number clean-up</div><button class="mc" id="modal-close-btn">x</button></div>'+
+    '<div class="mb">'+(msg?'<div style="background:var(--gbg);border:1px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--green)">✓ '+esc(msg)+'</div>':'')+
+    '<div style="font-size:12px;color:var(--tx2)">This only fixes how old records are written. <b style="color:var(--tx)">Stock quantities never change.</b> Tick what you want to fix and press <b style="color:var(--tx)">Apply</b>. Lines marked <span style="color:var(--red);font-weight:700">!</span> need a manual fix first.</div>'+
+    '<div style="max-height:62vh;overflow:auto;padding-right:4px">'+h+'</div></div>'+
+    '<div class="mf"><button class="btn" id="modal-close-btn2">Close</button><button class="btn bp" id="btn-snsplit-go">Apply</button></div>';
+}
+function snfixCount(){
+  var n=document.querySelectorAll(".snfix-cb:checked").length,b=document.getElementById("btn-snsplit-go");
+  if(b){b.textContent="Apply ("+n+" ticked)";b.disabled=!n;b.style.opacity=n?"1":".5";}
 }
 function submitSnSplit(){
-  var L=multiSnItems(),R=rcptSplitList(),n=0;
-  var pickR=[];document.querySelectorAll(".rcsplit-cb").forEach(function(cb){if(cb.checked)pickR.push(R[parseInt(cb.getAttribute("data-i"))]);});
-  document.querySelectorAll(".snsplit-cb").forEach(function(cb){if(!cb.checked)return;var x=L[parseInt(cb.getAttribute("data-i"))];if(x&&x.ok&&applySnSplit(x.item))n++;});
-  pickR.forEach(function(x){if(x&&applyRcptSplit(x))n++;});
-  if(!n){closeModal();return;}
+  var L=multiSnItems(),R=rcptSplitList(),nL=0,nR=0;
+  var pickL=[],pickR=[];
+  document.querySelectorAll(".snfix-cb:checked").forEach(function(cb){var i=parseInt(cb.getAttribute("data-i"));if(cb.getAttribute("data-kind")==="L")pickL.push(L[i]);else pickR.push(R[i]);});
+  pickL.forEach(function(x){if(x&&x.ok&&applySnSplit(x.item))nL++;});
+  pickR.forEach(function(x){if(x&&x.ok&&applyRcptSplit(x))nR++;});
+  if(!nL&&!nR){closeModal();return;}
   save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}
   closeModal();renderPage();
-  S.modal={type:"snsplit"};showModal(buildSnSplitModal().replace('<div class="mb">','<div class="mb"><div style="background:var(--gbg);border:1px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--green)">\u2713 '+n+' separated.</div>'));
+  var msg=[];if(nL)msg.push(nL+" S/N field"+(nL===1?"":"s")+" separated");if(nR)msg.push(nR+" receipt"+(nR===1?"":"s")+" fixed");
+  S.modal={type:"snsplit"};showModal(buildSnSplitModal(msg.join(", ")+". Anything left below is still open."));setTimeout(snfixCount,0);
 }
 function bulkShipHint(){
   var el=document.getElementById("bulk-ship-hint");if(!el)return;
@@ -2102,9 +2127,9 @@ function renderInventory(){
     ((S._newItems&&S._newItems.length)?'<button class="btn sm" id="btn-show-new" style="border-color:var(--green);color:var(--green)">'+(S._showNewOnly?'\u2713 ':'')+'New ('+S._newItems.length+')</button>'+(S._showNewOnly?'<button class="btn sm" id="btn-clear-new" style="border-color:var(--amber);color:var(--amber)">Clear new</button>':''):'')+
     
     '</div></div>'+
-    ((canEdit()&&!shipFilter)?(function(){var _ms=multiSnItems(),_rs=rcptSplitList().filter(function(x){return x.ok;});if(!_ms.length&&!_rs.length)return "";
-      if(!_ms.length)return '<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 '+_rs.length+' receipt'+(_rs.length===1?'':'s')+' of serialized parts list several units on one line without S/N (e.g. '+esc(_rs[0].item.name)+' +'+_rs[0].qty+').</span><button class="btn sm" id="btn-snsplit" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Separate S/Ns</button></div>';
-      return '<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 '+_ms.length+' item'+(_ms.length===1?' has':'s have')+' several serial numbers in one field (e.g. '+esc(_ms[0].item.name)+': '+esc(_ms[0].from)+').</span><button class="btn sm" id="btn-snsplit" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Separate S/Ns</button></div>';})():'')+
+    ((canEdit()&&!shipFilter)?(function(){var _ms=multiSnItems(),_rs=rcptSplitList(),_n=_ms.length+_rs.length;if(!_n)return "";
+      var _parts=[];if(_ms.length)_parts.push(_ms.length+" S/N field"+(_ms.length===1?"":"s")+" with several S/Ns");var _r2=_rs.filter(function(x){return x.qty>1;}).length,_r1=_rs.length-_r2;if(_r2)_parts.push(_r2+" receipt"+(_r2===1?"":"s")+" with several units on one line");if(_r1)_parts.push(_r1+" receipt"+(_r1===1?"":"s")+" without S/N");
+      return '<div style="background:var(--abg);border-bottom:1px solid var(--bd);padding:8px 18px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>\u26A0 Serial number clean-up: '+_parts.join(", ")+'.</span><button class="btn sm" id="btn-snsplit" style="border-color:var(--amber);color:var(--amber);margin-left:auto">S/N clean-up</button></div>';})():'')+
     ((shipFilter&&_ships[S.fShipDate])?(function(){var s=_ships[S.fShipDate],p=shipPLs(s);
       return '<div style="background:var(--bg3);border-bottom:1px solid var(--bd);padding:9px 18px;font-size:12px;color:var(--tx2);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center"><span><b style="color:var(--tx)">Shipment '+esc(fd(s.date))+'</b></span><span>'+(p.length?'<b style="color:var(--tx)">'+p.map(function(x){return esc(plTxt(x));}).join(" + ")+'</b>':'<span style="color:var(--amber)">no PL</span>')+'</span><span>'+s.lines.length+' lines \u00b7 '+s.units+' units received</span>'+
         (p.length>1?'<span style="color:var(--amber)">\u26A0 more than one PL on this date \u2014 use Edit shipment to set one</span>':(s.noPl&&p.length?'<span style="color:var(--amber)">\u26A0 '+s.noPl+' line(s) without PL \u2014 Edit shipment fixes it</span>':''))+
@@ -3500,7 +3525,7 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-ship-selnone"){S._shipSel={};S._moveMsg="";renderPage();return;}
   if(t.id==="btn-ship-move"){if(!canEdit())return;var _k=shipSelKeys();if(!_k.length){alert("Tick the lines you want to move first.");return;}var _h2=buildMoveLinesModal(_k);if(_h2){S.modal={type:"moveLines"};showModal(_h2);}return;}
   if(t.id==="btn-mv-save"){if(!canEdit())return;submitMoveLines();return;}
-  if(t.id==="btn-snsplit"){if(!canEdit())return;S.modal={type:"snsplit"};showModal(buildSnSplitModal());return;}
+  if(t.id==="btn-snsplit"){if(!canEdit())return;S.modal={type:"snsplit"};showModal(buildSnSplitModal());setTimeout(snfixCount,0);return;}
   if(t.id==="btn-snsplit-go"){if(!canEdit())return;submitSnSplit();return;}
   if(t.id==="btn-shipments"){S.modal={type:"shiplist"};showModal(buildShipmentsModal());return;}
   if(t.id==="btn-es-save"){if(!canEdit())return;submitEditShipment();return;}
@@ -3700,6 +3725,8 @@ return;}
         if(_rc.length>1){var _rm=_rc[0].id;S.tx=S.tx.filter(function(t){return t.id!==_rm;});}}
       else{var _cur=itemSerials(_di);_cur.push(_ds);_di.serials=_cur;if(!_di.sn)_di.sn=_ds;reconcileItem(_di);}
       markDirty(_di.id);save();if(syncStatus()){showSyncBadge("saving");pushToSheets();}closeModal();showModal(detailHTML(_di));renderPage();return;}
+    if(a==="snfix-count"){snfixCount();return;}
+    if(a==="snfix-sec"){ev.preventDefault();var _sec=el.getAttribute("data-sec"),_on=el.getAttribute("data-on")==="1";var _tb=el.closest("div").nextElementSibling;while(_tb&&!_tb.querySelector("table"))_tb=_tb.nextElementSibling;if(_tb)_tb.querySelectorAll(".snfix-cb").forEach(function(cb){cb.checked=_on;});snfixCount();return;}
     if(a==="ship-sel"){if(!S._shipSel)S._shipSel={};S._shipSel[el.getAttribute("data-key")]=el.checked;shipSelUpdate();return;}
     if(a==="ship-move-one"){if(!canEdit())return;var _h=buildMoveLinesModal([el.getAttribute("data-key")]);if(_h){S.modal={type:"moveLines"};showModal(_h);}return;}
     if(a==="ship-view"){S.fShipDate=el.getAttribute("data-date");S.fInvoice="";S.fNoInvoice=false;S.tab="inventory";closeModal();renderAll();return;}
@@ -3861,9 +3888,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP1-CLEANUP-SN2 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP1-CLEANUP-SN2 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-SN2";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SHIP1-CLEANUP-SN3 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SHIP1-CLEANUP-SN3 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-SN3";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
