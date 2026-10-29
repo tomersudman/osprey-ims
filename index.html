@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP1-CLEANUP-CHK</title>
+<title>OSPREY IMS v-SHIP1-CLEANUP-UNI</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1953,6 +1953,32 @@ function dl(c,fn,mt){var a=document.createElement("a");a.href=URL.createObjectUR
 function dfield(l,v){return'<div class="df"><div class="dfl">'+l+'</div><div class="dfv" style="text-align:center">'+v+'</div></div>';}
 function dfield2(l,v){return'<div class="df2"><div class="dfl2">'+l+'</div><div class="dfv2">'+v+'</div></div>';}
 
+// ── ONE LAYOUT FOR EVERY ITEM: a stock table (one row per serial / batch / the item itself) ──
+function stockTable(item){
+  var sers=itemSerials(item),lots=itemLots(item),rows=[];
+  if(sers.length)sers.forEach(function(sn){rows.push({sn:sn,qty:1,loc:serialLoc(item,sn),exp:serialExpiry(item,sn),box:serialBox(item,sn),note:serialNote(item,sn)});});
+  else if(lots.length)lots.forEach(function(L){rows.push({sn:"",qty:parseInt(L.qty)||0,loc:L.location,exp:L.expiry,box:L.box,note:L.note});});
+  else rows.push({sn:"",qty:parseInt(item.qty)||0,loc:itemDisplayLoc(item),exp:item.expiry,box:itemDisplayBox(item),note:item.notes});
+  var uniqN=function(k){var m={};rows.forEach(function(r){m[String(r[k]||"").trim().toLowerCase()]=1;});return Object.keys(m).length;};
+  var split=[];if(rows.length>1){if(uniqN("loc")>1)split.push("locations");if(uniqN("box")>1)split.push("boxes");if(uniqN("exp")>1)split.push("expiry");}
+  var th='padding:7px 8px;text-align:left;font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;font-weight:600;white-space:nowrap';
+  var td='padding:7px 8px;font-size:12px;vertical-align:top';
+  var dash='<span style="color:var(--tx3)">---</span>';
+  var body=rows.map(function(r){
+    return '<tr style="border-top:1px solid var(--bd)">'+
+      '<td style="'+td+';font-family:monospace;color:var(--tx);white-space:nowrap">'+(r.sn?esc(r.sn):dash)+'</td>'+
+      '<td style="'+td+';text-align:center;font-weight:600;color:var(--tx)">'+r.qty+'</td>'+
+      '<td style="'+td+';color:var(--tx2);word-break:break-word">'+(r.loc&&r.loc!=="Unknown"?esc(r.loc):dash)+'</td>'+
+      '<td style="'+td+';color:var(--amber);white-space:nowrap">'+(r.exp?esc(fdate(r.exp)):'---')+'</td>'+
+      '<td style="'+td+';font-weight:600;color:var(--tx);white-space:nowrap">'+(r.box?esc(r.box):'---')+'</td>'+
+      '<td style="'+td+';color:var(--tx3);font-style:italic;word-break:break-word">'+(r.note?esc(r.note):'---')+'</td></tr>';}).join("");
+  var noteRow=rows.length===1&&!sers.length&&!lots.length; // the item's note is already in the Comment column
+  var inote=(!noteRow&&item.notes&&!(sers.length&&hasSerialNotes(item)))?'<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx2)">Note: '+esc(item.notes)+'</div>':'';
+  return '<div class="ds"><div class="dst">'+(sers.length?'Serials':'Stock')+(split.length?' — split across '+split.join(", "):'')+' ('+rows.length+')</div>'+
+    '<div style="border:1px solid var(--bd);border-radius:9px;max-height:300px;overflow-y:auto;overflow-x:hidden">'+
+    '<table style="width:100%;min-width:0;border-collapse:collapse;table-layout:fixed"><colgroup><col style="width:14%"><col style="width:7%"><col style="width:25%"><col style="width:15%"><col style="width:11%"><col style="width:28%"></colgroup>'+
+    '<thead><tr style="background:var(--bg3);position:sticky;top:0"><th style="'+th+'">Serial</th><th style="'+th+';text-align:center">Qty</th><th style="'+th+'">Location</th><th style="'+th+'">Expiry</th><th style="'+th+'">Box</th><th style="'+th+'">Comment</th></tr></thead><tbody>'+body+'</tbody></table></div>'+inote+'</div>';
+}
 function serialLocationSection(item){
   var sers=itemSerials(item);
   if(sers.length<2)return "";
@@ -2046,15 +2072,7 @@ function detailHTML(item){
       I.dups.forEach(function(s){box+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0"><span>\u26A0 S/N <b>'+esc(s)+'</b> was recorded as received more than once (only one unit can exist).</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-dup" data-id="'+esc(item.id)+'" data-sn="'+esc(s)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Remove duplicate record</button>':'')+'</div>';});
       I.missing.forEach(function(s){box+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0"><span>\u26A0 S/N <b>'+esc(s)+'</b> was received and never drawn, but isn\'t in stock.</span>'+(canAdmin()?'<button class="btn sm" data-action="fix-missing" data-id="'+esc(item.id)+'" data-sn="'+esc(s)+'" style="border-color:var(--amber);color:var(--amber);margin-left:auto">Put back in stock</button>':'')+'</div>';});
       return box+'</div>';})()+
-    (showTable?serialLocationSection(item):showLotTable?lotSection(item):
-      '<div class="ds"><div class="dst">Placement</div><div class="dg2">'+
-      dfield2("Location",itemDisplayLoc(item)?'<span class="loctag">'+esc(itemDisplayLoc(item))+'</span>':'<span style="color:var(--tx3)">---</span>')+
-      dfield2("Box",itemDisplayBox(item)?esc(itemDisplayBox(item)):'<span style="color:var(--tx3)">---</span>')+
-      dfield2("Expiry",ecell(item))+
-      (isSerialized(item)?dfield2(itemSerials(item).length>1?"S/N(s)":"S/N",'<span style="font-family:monospace;font-size:12px">'+itemSerials(item).map(esc).join(", ")+'</span>'):'')+
-      '</div>'+
-      (item.notes?'<div style="margin-top:10px;background:var(--bg3);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--tx2)">Note: '+esc(item.notes)+'</div>':"")+
-      '</div>')+
+    stockTable(item)+
     '<div class="ds"><div class="dst">Transaction history ('+txs.length+')</div>'+tl+'</div>'+
     '</div>'+
     '<div class="mf">'+
@@ -2250,36 +2268,41 @@ function returnToStock(txid){
   if(syncStatus()){showSyncBadge("saving");pushToSheets();}
   closeModal();renderAll();
 }
+// ── ONE LAYOUT FOR EVERY TRANSACTION: S/N · PL # · Location · Box · Expiry · Comment ──
+// Fields that don't apply to this transaction are shown greyed out with "--".
+function _txDis(label,val){return '<div><label class="fl">'+label+'</label><input type="text" value="'+esc(val==null||val===""?"--":val)+'" disabled style="width:100%;opacity:.55'+(label==="S/N"?';font-family:monospace':'')+'"></div>';}
+function _txHint(s){return '<div class="ff" style="font-size:11px;color:var(--tx3);margin-top:-4px">'+s+'</div>';}
 function txImportFields(t,item,isAdd){
   S._txEditSerial="";
-  if(isAdd||!item||t.type!=="receive")return "";
-  var sn=String(t.serial||t.sn||"").trim();
-  var h='';
-  if(sn&&itemSerials(item).map(function(s){return String(s).trim();}).indexOf(sn)>=0){
+  var sn=String((t&&(t.serial||t.sn))||"").trim();
+  if(isAdd||!item)return _txDis("S/N","")+_txDis("PL #","")+_txDis("Location","")+_txDis("Box","")+_txDis("Expiry","")+_txDis("Comment","");
+  if(isCorrTx(t))return _txDis("S/N","")+_txDis("PL #","")+_txDis("Location","")+_txDis("Box","")+_txDis("Expiry","")+_txDis("Comment","")+_txHint("Stock correction — no unit details.");
+  if(t.type!=="receive"){var sp=txSnap(t);
+    return _txDis("S/N",sn)+_txDis("PL #",sp.invoice||t.invoice)+_txDis("Location",sp.loc)+_txDis("Box",sp.box)+_txDis("Expiry",sp.exp?fd(sp.exp):"")+_txDis("Comment",sp.note)+_txHint("Shows where the unit"+((parseInt(t.qty)||0)>1?"s were":" was")+" taken from (read-only).");}
+  var plIn=function(v){return '<div><label class="fl">PL #</label><input id="tx-pl" type="text" value="'+esc(v||"")+'" style="width:100%"></div>';};
+  if(sn&&hasSerial(item,sn)){
     S._txEditSerial=sn;
-    h+='<div><label class="fl">S/N</label><input id="tx-sn" type="text" value="'+esc(sn)+'" style="width:100%;font-family:monospace"></div>'+
-       '<div><label class="fl">PL #</label><input id="tx-pl" type="text" value="'+esc(rawSerialInv(item,sn)||t.invoice||"")+'" style="width:100%"></div>'+
+    return '<div><label class="fl">S/N</label><input id="tx-sn" type="text" value="'+esc(sn)+'" style="width:100%;font-family:monospace"></div>'+
+       plIn(rawSerialInv(item,sn)||t.invoice)+
        '<div><label class="fl">Location</label><select id="tx-loc" style="width:100%">'+locOptions(serialLoc(item,sn))+'</select></div>'+
        '<div><label class="fl">Box</label><input id="tx-box" type="text" value="'+esc(serialBox(item,sn)||"")+'" style="width:100%"></div>'+
        '<div><label class="fl">Expiry</label><input id="tx-exp" type="date" value="'+esc(serialExpiry(item,sn)||"")+'" style="width:100%"></div>'+
        '<div><label class="fl">Comment</label><input id="tx-cmt" type="text" value="'+esc(serialNote(item,sn)||"")+'" style="width:100%"></div>';
-  } else {
-    h+='<div><label class="fl">PL #</label><input id="tx-pl" type="text" value="'+esc(t.invoice||"")+'" style="width:100%"></div>';
-    if(!isSerialized(item)){
-      var ls=itemLots(item), gi=txGuessLot(t,item), src;
-      if(ls.length){
-        src=ls[gi<0?0:gi];
-        if(gi<0&&ls.length>1){
-          h+='<div class="ff"><label class="fl">Batch this receipt went into</label><select id="tx-lot" style="width:100%" onchange="txLotPick()">'+ls.map(function(L,k){return '<option value="'+k+'">'+(parseInt(L.qty)||0)+' @ '+esc(L.location||"\u2014")+(L.box?' / box '+esc(L.box):'')+(L.expiry?' / exp '+esc(fd(L.expiry)):'')+'</option>';}).join('')+'</select></div>';
-        } else h+='<input type="hidden" id="tx-lot" value="'+(gi<0?0:gi)+'">';
-      } else src={location:item.location,box:item.floor,expiry:item.expiry,note:item.notes};
-      h+='<div><label class="fl">Location</label><select id="tx-loc" style="width:100%">'+locOptions(src.location||"")+'</select></div>'+
-         '<div><label class="fl">Box</label><input id="tx-box" type="text" value="'+esc(src.box||"")+'" style="width:100%"></div>'+
-         '<div><label class="fl">Expiry</label><input id="tx-exp" type="date" value="'+esc(src.expiry||"")+'" style="width:100%"></div>'+
-         '<div><label class="fl">Comment</label><input id="tx-cmt" type="text" value="'+esc(src.note||"")+'" style="width:100%"></div>';
-    }
   }
-  return h;
+  if(sn)return _txDis("S/N",sn)+plIn(t.invoice)+_txDis("Location","")+_txDis("Box","")+_txDis("Expiry","")+_txDis("Comment","")+_txHint("S/N "+esc(sn)+" is no longer in stock, so only the PL can be changed here.");
+  if(isSerialized(item))return _txDis("S/N","")+plIn(t.invoice)+_txDis("Location","")+_txDis("Box","")+_txDis("Expiry","")+_txDis("Comment","")+_txHint("The S/N was not written on this receipt. Use “S/N clean-up” on the Inventory page to add it; then you can edit it here.");
+  // non-serialized: the batch this receipt went into
+  var h=_txDis("S/N","")+plIn(t.invoice);
+  var ls=itemLots(item),gi=txGuessLot(t,item),src;
+  if(ls.length){
+    src=ls[gi<0?0:gi];
+    if(gi<0&&ls.length>1)h+='<div class="ff"><label class="fl">Batch this receipt went into</label><select id="tx-lot" style="width:100%" onchange="txLotPick()">'+ls.map(function(L,k){return '<option value="'+k+'">'+(parseInt(L.qty)||0)+' @ '+esc(L.location||"—")+(L.box?' / box '+esc(L.box):'')+(L.expiry?' / exp '+esc(fd(L.expiry)):'')+'</option>';}).join('')+'</select></div>';
+    else h+='<input type="hidden" id="tx-lot" value="'+(gi<0?0:gi)+'">';
+  } else src={location:item.location,box:item.floor,expiry:item.expiry,note:item.notes};
+  return h+'<div><label class="fl">Location</label><select id="tx-loc" style="width:100%">'+locOptions(src.location||"")+'</select></div>'+
+     '<div><label class="fl">Box</label><input id="tx-box" type="text" value="'+esc(src.box||"")+'" style="width:100%"></div>'+
+     '<div><label class="fl">Expiry</label><input id="tx-exp" type="date" value="'+esc(src.expiry||"")+'" style="width:100%"></div>'+
+     '<div><label class="fl">Comment</label><input id="tx-cmt" type="text" value="'+esc(src.note||"")+'" style="width:100%"></div>';
 }
 function applyTxImportFields(t,item,date){
   var g=function(id){var e=document.getElementById(id);return e?(e.value||"").trim():null;};
@@ -3935,9 +3958,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP1-CLEANUP-CHK (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP1-CLEANUP-CHK LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-CHK";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SHIP1-CLEANUP-UNI (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SHIP1-CLEANUP-UNI LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-UNI";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
