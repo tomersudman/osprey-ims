@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP1-CLEANUP-FIRST</title>
+<title>OSPREY IMS v-SHIP1-FIRST</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -927,7 +927,7 @@ function buildShipmentsModal(){
 // Import screen: tell the user when the chosen date already has a shipment
 // ── TEMPORARY SHIPMENT CLEAN-UP TOOL (move single lines to another shipment) ───────────
 // Set to false (or go back to the SHIP1 file) when the clean-up is done.
-var SHIP_CLEANUP=true;
+var SHIP_CLEANUP=false;
 function shipLineKey(l){return l.tx?"tx:"+l.tx.id:(l.sn?"sn:"+l.item.id+"|"+l.sn:(l.lot?"lot:"+l.item.id+"|"+itemLots(l.item).indexOf(l.lot):"item:"+l.item.id));}
 function shipSelKeys(){return Object.keys(S._shipSel||{}).filter(function(k){return S._shipSel[k];});}
 function shipSelUpdate(){var b=document.getElementById("btn-ship-move");var n=shipSelKeys().length;if(b){b.textContent="Move selected ("+n+")";b.disabled=!n;b.style.opacity=n?"1":".5";}}
@@ -4121,9 +4121,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP1-CLEANUP-FIRST (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP1-CLEANUP-FIRST LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-FIRST";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SHIP1-FIRST (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SHIP1-FIRST LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-FIRST";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
