@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>OSPREY IMS v-SHIP1-CLEANUP-MRG</title>
+<title>OSPREY IMS v-SHIP1-CLEANUP-MRG2</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -2291,7 +2291,10 @@ function serialLocationSection(item){
 function detailHTML(item){
   var txs=S.tx.filter(function(t){return t.itemId===item.id;}).sort(function(a,b){return (parseInt(b.ts)||0)-(parseInt(a.ts)||0);});
   var drawn=txs.filter(function(t){return t.type==="draw"&&!isCorrTx(t);}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
-  var recvd=txs.filter(function(t){return t.type==="receive"&&!isReturnTx(t)&&!isCorrTx(t)&&!isFirstTx(t);}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
+  // receipts imported with PL "FIRST SHIPMENT" belong to the original stock, not to "Received"
+  var _isPlFirst=function(t){return t.type==="receive"&&!isReturnTx(t)&&!isCorrTx(t)&&!isFirstTx(t)&&/^\s*first shipment\s*$/i.test(String(t.invoice||""));};
+  var _plFirst=txs.filter(_isPlFirst).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
+  var recvd=txs.filter(function(t){return t.type==="receive"&&!isReturnTx(t)&&!isCorrTx(t)&&!isFirstTx(t)&&!_isPlFirst(t);}).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
   var rtnd=txs.filter(isReturnTx).reduce(function(s,t){return s+(parseInt(t.qty)||0);},0);
   // Running balance: stock right after each transaction, counted back from today's stock
   var _bal={},_b=parseInt(item.qty)||0;txs.forEach(function(t){_bal[t.id]=_b;_b-=txEffect(t.type,t.qty);});
@@ -2336,7 +2339,7 @@ function detailHTML(item){
     '<div class="ds"><div class="dst">Stock overview</div>'+
     '<div style="display:flex;align-items:baseline;gap:9px"><div style="font-size:38px;font-weight:700;line-height:1;color:'+bc+'">'+(parseInt(item.qty)||0)+'</div><div style="font-size:13px;color:var(--tx2);font-weight:500">in stock</div></div>'+
     '<div style="margin-top:11px;height:8px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+bc+';border-radius:6px;transition:width .3s"></div></div>'+
-    '<div style="margin-top:10px;font-size:12px;color:var(--tx2)">Original <b style="color:var(--tx)">'+(parseInt(item.initialQty)||0)+'</b> &nbsp;\u00b7&nbsp; Drawn <b style="color:var(--tx)">'+drawn+'</b> &nbsp;\u00b7&nbsp; Returned <b style="color:var(--tx)">'+rtnd+'</b> &nbsp;\u00b7&nbsp; Received <b style="color:var(--tx)">'+recvd+'</b></div>'+
+    '<div style="margin-top:10px;font-size:12px;color:var(--tx2)">Original <b style="color:var(--tx)">'+(function(){var _sc=stockCheck(item);return (_sc?_sc.base:(parseInt(item.initialQty)||0))+_plFirst;})()+'</b> &nbsp;\u00b7&nbsp; Drawn <b style="color:var(--tx)">'+drawn+'</b> &nbsp;\u00b7&nbsp; Returned <b style="color:var(--tx)">'+rtnd+'</b> &nbsp;\u00b7&nbsp; Received <b style="color:var(--tx)">'+recvd+'</b></div>'+
     '</div>'+
     (function(){var r=stockCheck(item);if(!r||!r.bad)return "";var ser=isSerialized(item);
       return '<div style="background:rgba(239,68,68,.10);border:1px solid var(--red);border-radius:9px;padding:10px 14px;margin:-6px 0 16px;font-size:12px;color:var(--tx)">'+
@@ -4343,9 +4346,9 @@ function checkDeepLink() {
   setTimeout(function(){ if(banner.parentNode) banner.parentNode.removeChild(banner); }, 5000);
 }
 
-console.log("%c OSPREY IMS v-SHIP1-CLEANUP-MRG (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
-console.log("%c\u2705 BUILD SHIP1-CLEANUP-MRG LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
-(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-MRG";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
+console.log("%c OSPREY IMS v-SHIP1-CLEANUP-MRG2 (per-serial meta + invoice filter) ", "background:#1F4E79;color:#fff;padding:4px");
+console.log("%c\u2705 BUILD SHIP1-CLEANUP-MRG2 LOADED - if you see this, you have the newest file","background:#0a0;color:#fff;font-size:16px;padding:8px");
+(function(){try{var t=document.querySelector(".topbar-title")||document.querySelector(".topbar");if(t){var b=document.createElement("span");b.textContent=" \u2022 SHIP1-CLEANUP-MRG2";b.style.cssText="color:#0f0;font-size:11px;margin-left:8px;font-weight:700";t.appendChild(b);}}catch(e){}})();
 
 </script>
 </body>
